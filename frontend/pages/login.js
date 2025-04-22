@@ -1,8 +1,9 @@
-import { useState } from 'react';
+import { useState, useEffect } from 'react';
 import Link from 'next/link';
 import { useRouter } from 'next/router';
 import { toast } from 'react-toastify';
 import { useAuth } from '../lib/auth';
+import Head from 'next/head';
 
 export default function Login() {
   const [email, setEmail] = useState('');
@@ -10,6 +11,17 @@ export default function Login() {
   const [isSubmitting, setIsSubmitting] = useState(false);
   const { login } = useAuth();
   const router = useRouter();
+
+  // Theme setting for light mode
+  useEffect(() => {
+    // Ensure light mode is applied on login page
+    if (typeof window !== 'undefined') {
+      // Reset dark mode if present
+      document.documentElement.classList.remove('dark');
+      // Store the light theme preference
+      localStorage.setItem('theme', 'light');
+    }
+  }, []);
 
   const handleSubmit = async (e) => {
     e.preventDefault();
@@ -33,7 +45,11 @@ export default function Login() {
   };
 
   return (
-    <div className="min-h-screen flex items-center justify-center bg-background py-12 px-4 sm:px-6 lg:px-8">
+    <>
+      <Head>
+        <link rel="stylesheet" href="/styles/modern/theme.css" />
+      </Head>
+      <div className="min-h-screen flex items-center justify-center bg-gray-50 py-12 px-4 sm:px-6 lg:px-8">
       <div className="max-w-md w-full space-y-8 bg-white p-8 rounded-lg shadow-md">
         <div>
           <h1 className="text-center text-3xl font-bold text-primary">DepositShield</h1>
@@ -124,5 +140,6 @@ export default function Login() {
         </div>
       </div>
     </div>
+    </>
   );
 }

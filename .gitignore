@@ -1,11 +1,2 @@
 # dependencies
 frontend/node_modules/
-
-# build
-dist/
-build/
-
-# system files
-.DS_Store
-.env
-*.log
