@@ -1,7 +1,7 @@
 import axios from 'axios';
 
 // API temel URL'ini ayarla
-const API_URL = process.env.NEXT_PUBLIC_API_URL || 'http://localhost:5050/api';
+const API_URL = process.env.NEXT_PUBLIC_API_URL || 'https://apidepositshield.retako.com/api';
 
 // Axios instance oluştur
 const api = axios.create({

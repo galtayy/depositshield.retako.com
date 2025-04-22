@@ -6,7 +6,7 @@ import Layout from '../../../../components/Layout';
 import { apiService } from '../../../../lib/api';
 
 // API base URL
-const API_URL = process.env.NEXT_PUBLIC_API_URL || 'http://localhost:5050/api';
+const API_URL = process.env.NEXT_PUBLIC_API_URL || 'https://apidepositshield.retako.com/api';
 
 export default function SharedReportView() {
   const [report, setReport] = useState(null);
@@ -293,8 +293,8 @@ export default function SharedReportView() {
                 // Bu fotoğraf için alternatif URL'ler
                 const fallbackUrls = [
                   imgSrc,
-                  photo.url ? `http://localhost:5050${photo.url}` : null,
-                  photo.url ? `http://localhost:5050/uploads/${photo.url.split('/').pop()}` : null
+                  photo.url ? `https://apidepositshield.retako.com${photo.url}` : null,
+                  photo.url ? `https://apidepositshield.retako.com/uploads/${photo.url.split('/').pop()}` : null
                 ].filter(Boolean);
                 
                 return (

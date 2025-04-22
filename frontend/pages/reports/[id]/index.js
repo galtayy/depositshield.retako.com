@@ -7,7 +7,7 @@ import { apiService } from '../../../lib/api';
 import { useAuth } from '../../../lib/auth';
 
 // API base URL
-const API_URL = process.env.NEXT_PUBLIC_API_URL || 'http://localhost:5050/api';
+const API_URL = process.env.NEXT_PUBLIC_API_URL || 'https://apidepositshield.retako.com/api';
 
 // UUID oluşturmak için yardımcı fonksiyon
 function generateUUID() {
@@ -192,7 +192,11 @@ export default function ReportDetail() {
       console.error('Report missing UUID:', report);
       return '';
     }
-    return `${window.location.origin}/reports/shared/${report.uuid}`;
+    // Canlı ortam için domain ayarı
+    const domain = process.env.NODE_ENV === 'production' 
+      ? 'https://depositshield.retako.com' 
+      : window.location.origin;
+    return `${domain}/reports/shared/${report.uuid}`;
   };
 
   // Copy share link
@@ -204,7 +208,10 @@ export default function ReportDetail() {
     }
     
     // Yaşanılan sorunlar nedeniyle alternatif bir ID tabanlı link de oluştur
-    const fallbackLink = `${window.location.origin}/reports/shared/id-${report.id}`;
+    const domain = process.env.NODE_ENV === 'production' 
+      ? 'https://depositshield.retako.com' 
+      : window.location.origin;
+    const fallbackLink = `${domain}/reports/shared/id-${report.id}`;
     const linkToShare = link || fallbackLink;
     
     navigator.clipboard.writeText(linkToShare).then(() => {
@@ -371,8 +378,8 @@ export default function ReportDetail() {
                 // Bu fotoğraf için alternatif URL'ler
                 const fallbackUrls = [
                   imgSrc,
-                  photo.url ? `http://localhost:5050${photo.url}` : null,
-                  photo.url ? `http://localhost:5050/uploads/${photo.url.split('/').pop()}` : null
+                  photo.url ? `https://apidepositshield.retako.com${photo.url}` : null,
+                  photo.url ? `https://apidepositshield.retako.com/uploads/${photo.url.split('/').pop()}` : null
                 ].filter(Boolean);
                 
                 return (

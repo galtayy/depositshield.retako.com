@@ -260,10 +260,19 @@ export default function PhotoDetail() {
             <div className="relative">
               <img 
                 ref={imageRef}
-                src={photo.url} 
+                src={photo.url?.startsWith('http') ? photo.url : `https://apidepositshield.retako.com${photo.url}`} 
                 alt={photo.note || "Rapor fotoğrafı"} 
                 className="w-full rounded-lg cursor-crosshair"
                 onClick={handleImageClick}
+                onError={(e) => {
+                  console.error('Image loading error');
+                  // Alternatif URL'leri dene
+                  if (photo.url && !photo.url.startsWith('http')) {
+                    e.target.src = `https://apidepositshield.retako.com/uploads/${photo.url.split('/').pop()}`;
+                  } else {
+                    e.target.src = '/images/placeholder-image.svg';
+                  }
+                }}
               />
               
               {/* Fotoğraf üzerindeki etiketler */}
