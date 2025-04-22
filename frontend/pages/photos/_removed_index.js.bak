@@ -1,0 +1,160 @@
+import { useState, useEffect } from 'react';
+import { useRouter } from 'next/router';
+import Link from 'next/link';
+import { toast } from 'react-toastify';
+import Layout from '../../components/Layout';
+import { apiService } from '../../lib/api';
+import { useAuth } from '../../lib/auth';
+
+export default function Photos() {
+  const { user, loading: authLoading } = useAuth();
+  const [photos, setPhotos] = useState([]);
+  const [loading, setLoading] = useState(true);
+  const [filter, setFilter] = useState('all');
+  const router = useRouter();
+
+  useEffect(() => {
+    if (!authLoading && !user) {
+      router.push('/login');
+      return;
+    }
+
+    fetchPhotos();
+  }, [user, authLoading, router]);
+
+  const fetchPhotos = async () => {
+    try {
+      setLoading(true);
+      console.log('Fotoğraflar getiriliyor');
+      const response = await apiService.photos.getAll();
+      console.log('Fotoğraflar yanıtı:', response.data);
+      
+      setPhotos(response.data);
+    } catch (error) {
+      console.error('Photos fetch error:', error);
+      let errorMessage = 'Fotoğraflar yüklenirken bir hata oluştu.';
+      
+      if (error.response) {
+        console.error('API yanıt hatası:', error.response.data);
+        errorMessage = error.response.data.message || errorMessage;
+      }
+      
+      toast.error(errorMessage);
+    } finally {
+      setLoading(false);
+    }
+  };
+
+  const filterPhotos = () => {
+    if (filter === 'all') {
+      return photos;
+    } else {
+      return photos.filter(photo => {
+        if (filter === 'withTags' && photo.tags && photo.tags.length > 0) {
+          return true;
+        }
+        if (filter === 'withoutTags' && (!photo.tags || photo.tags.length === 0)) {
+          return true;
+        }
+        if (filter === 'withNotes' && photo.note && photo.note.trim() !== '') {
+          return true;
+        }
+        return false;
+      });
+    }
+  };
+
+  const filteredPhotos = filterPhotos();
+
+  return (
+    <Layout>
+      <div className="container mx-auto px-4 py-8">
+        <h1 className="text-2xl font-bold mb-6">Fotoğraflar</h1>
+        
+        <div className="flex flex-wrap items-center gap-4 mb-6">
+          <div className="flex shadow rounded overflow-hidden">
+            <button 
+              onClick={() => setFilter('all')}
+              className={`px-4 py-2 text-sm ${filter === 'all' ? 'bg-primary text-white' : 'bg-white dark:bg-gray-800 text-gray-700 dark:text-gray-300'}`}
+            >
+              Tümü
+            </button>
+            <button 
+              onClick={() => setFilter('withTags')}
+              className={`px-4 py-2 text-sm ${filter === 'withTags' ? 'bg-primary text-white' : 'bg-white dark:bg-gray-800 text-gray-700 dark:text-gray-300'}`}
+            >
+              Etiketli
+            </button>
+            <button 
+              onClick={() => setFilter('withoutTags')}
+              className={`px-4 py-2 text-sm ${filter === 'withoutTags' ? 'bg-primary text-white' : 'bg-white dark:bg-gray-800 text-gray-700 dark:text-gray-300'}`}
+            >
+              Etiketsiz
+            </button>
+            <button 
+              onClick={() => setFilter('withNotes')}
+              className={`px-4 py-2 text-sm ${filter === 'withNotes' ? 'bg-primary text-white' : 'bg-white dark:bg-gray-800 text-gray-700 dark:text-gray-300'}`}
+            >
+              Notlu
+            </button>
+          </div>
+        </div>
+        
+        {loading ? (
+          <div className="flex justify-center items-center py-12">
+            <div className="animate-spin rounded-full h-12 w-12 border-t-2 border-b-2 border-primary"></div>
+          </div>
+        ) : (
+          <>
+            {filteredPhotos.length === 0 ? (
+              <div className="bg-white dark:bg-gray-800 rounded-lg shadow-md p-6 text-center">
+                <p className="text-gray-600 dark:text-gray-400 mb-4">Henüz fotoğraf bulunmuyor.</p>
+                <p className="text-gray-600 dark:text-gray-400">
+                  Fotoğraf eklemek için bir rapor oluşturun ve fotoğraf ekleyin.
+                </p>
+              </div>
+            ) : (
+              <div className="photo-grid">
+                {filteredPhotos.map((photo) => (
+                  <div key={photo.id} className="photo-card">
+                    <div className="photo-card-image">
+                      <img src={photo.url} alt={photo.note || "Rapor fotoğrafı"} />
+                      <div className="photo-card-overlay">
+                        <Link href={`/photos/${photo.id}`} className="btn btn-primary">
+                          Detay
+                        </Link>
+                      </div>
+                    </div>
+                    <div className="photo-card-content">
+                      <div className="flex justify-between items-start">
+                        <div>
+                          {photo.note ? (
+                            <p className="text-sm text-gray-700 dark:text-gray-300 mb-1 line-clamp-2">
+                              {photo.note}
+                            </p>
+                          ) : (
+                            <p className="text-sm text-gray-500 italic mb-1">
+                              Not yok
+                            </p>
+                          )}
+                          <p className="text-xs text-gray-500">
+                            {new Date(photo.timestamp).toLocaleDateString('tr-TR')}
+                          </p>
+                        </div>
+                        {photo.tags && photo.tags.length > 0 && (
+                          <span className="inline-flex items-center px-2 py-1 rounded-full text-xs font-medium bg-gray-100 dark:bg-gray-700 text-gray-800 dark:text-gray-300">
+                            {photo.tags.length} etiket
+                          </span>
+                        )}
+                      </div>
+                    </div>
+                  </div>
+                ))}
+              </div>
+            )}
+          </>
+        )}
+      </div>
+    </Layout>
+  );
+}
