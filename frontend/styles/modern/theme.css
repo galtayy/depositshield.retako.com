@@ -51,6 +51,15 @@
   --text-tertiary: #D1D5DB;
 }
 
+/* Ensure light mode theme is explicitly enforced */
+body:not(.dark) {
+  --background: #F9FAFB;
+  --surface: #FFFFFF;
+  --text-primary: #1F2937;
+  --text-secondary: #6B7280;
+  --text-tertiary: #9CA3AF;
+}
+
 /* Card styles */
 .card {
   background-color: var(--surface);
@@ -321,6 +330,22 @@
 .dark .radio {
   border-color: #4B5563;
 }
+
+/* Light mode explicit overrides - ensure no dark styles leak through */
+body:not(.dark) .input,
+body:not(.dark) .select,
+body:not(.dark) .textarea {
+  background-color: white;
+  border-color: rgba(0, 0, 0, 0.1);
+  color: var(--text-primary);
+}
+
+body:not(.dark) .input::placeholder,
+body:not(.dark) .textarea::placeholder {
+  color: var(--text-tertiary);
+}
+
+
 
 /* Hero section styles */
 .hero {

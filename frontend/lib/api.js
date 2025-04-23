@@ -1,7 +1,7 @@
 import axios from 'axios';
 
 // API temel URL'ini ayarla
-const API_URL = process.env.NEXT_PUBLIC_API_URL || 'https://apidepositshield.retako.com/api';
+const API_URL = process.env.NEXT_PUBLIC_API_URL || 'http://localhost:5050';
 
 // Axios instance oluştur
 const api = axios.create({
@@ -46,54 +46,54 @@ api.interceptors.response.use(
 export const apiService = {
   // Mülk işlemleri
   properties: {
-    getAll: () => api.get('/properties'),
-    getById: (id) => api.get(`/properties/${id}`),
-    create: (data) => api.post('/properties', data),
-    update: (id, data) => api.put(`/properties/${id}`, data),
-    delete: (id) => api.delete(`/properties/${id}`),
+    getAll: () => api.get('/api/properties'),
+    getById: (id) => api.get(`/api/properties/${id}`),
+    create: (data) => api.post('/api/properties', data),
+    update: (id, data) => api.put(`/api/properties/${id}`, data),
+    delete: (id) => api.delete(`/api/properties/${id}`),
   },
   
   // Rapor işlemleri
   reports: {
-    getAll: () => api.get('/reports'),
-    getByProperty: (propertyId) => api.get(`/reports/property/${propertyId}`),
-    getById: (id) => api.get(`/reports/${id}`),
-    getByUuid: (uuid) => api.get(`/reports/uuid/${uuid}`),
-    create: (data) => api.post('/reports', data),
-    update: (id, data) => api.put(`/reports/${id}`, data),
-    delete: (id) => api.delete(`/reports/${id}`),
+    getAll: () => api.get('/api/reports'),
+    getByProperty: (propertyId) => api.get(`/api/reports/property/${propertyId}`),
+    getById: (id) => api.get(`/api/reports/${id}`),
+    getByUuid: (uuid) => api.get(`/api/reports/uuid/${uuid}`),
+    create: (data) => api.post('/api/reports', data),
+    update: (id, data) => api.put(`/api/reports/${id}`, data),
+    delete: (id) => api.delete(`/api/reports/${id}`),
   },
   
   // Fotoğraf işlemleri
   photos: {
-    getAll: () => api.get('/photos'),
-    getById: (id) => api.get(`/photos/${id}`),
-    getByReport: (reportId) => api.get(`/photos/report/${reportId}`),
+    getAll: () => api.get('/api/photos'),
+    getById: (id) => api.get(`/api/photos/${id}`),
+    getByReport: (reportId) => api.get(`/api/photos/report/${reportId}`),
     upload: (reportId, formData) => {
-      return api.post(`/photos/upload/${reportId}`, formData, {
+      return api.post(`/api/photos/upload/${reportId}`, formData, {
         headers: {
           'Content-Type': 'multipart/form-data',
         },
       });
     },
-    updateNote: (id, note) => api.put(`/photos/${id}/note`, { note }),
-    addTag: (id, tag) => api.post(`/photos/${id}/tags`, { tag }),
-    removeTag: (id, tag) => api.delete(`/photos/${id}/tags/${tag}`),
-    delete: (id) => api.delete(`/photos/${id}`),
+    updateNote: (id, note) => api.put(`/api/photos/${id}/note`, { note }),
+    addTag: (id, tag) => api.post(`/api/photos/${id}/tags`, { tag }),
+    removeTag: (id, tag) => api.delete(`/api/photos/${id}/tags/${tag}`),
+    delete: (id) => api.delete(`/api/photos/${id}`),
   },
 
   // Kullanıcı işlemleri
   user: {
-    getProfile: () => api.get('/users/profile'),
-    updateProfile: (data) => api.put('/users/profile', data),
-    changePassword: (data) => api.put('/users/password', data),
+    getProfile: () => api.get('/api/users/profile'),
+    updateProfile: (data) => api.put('/api/users/profile', data),
+    changePassword: (data) => api.put('/api/users/password', data),
   },
   
   // Auth işlemleri
   auth: {
-    login: (credentials) => api.post('/auth/login', credentials),
-    register: (userData) => api.post('/auth/register', userData),
-    getUser: () => api.get('/auth/user'),
+    login: (credentials) => api.post('/api/auth/login', credentials),
+    register: (userData) => api.post('/api/auth/register', userData),
+    getUser: () => api.get('/api/auth/user'),
   }
 };
 

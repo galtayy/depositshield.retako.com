@@ -24,16 +24,9 @@ function MyApp({ Component, pageProps }) {
 
     // Check for saved theme preference
     if (typeof window !== 'undefined') {
-      const savedTheme = localStorage.getItem('theme');
-      if (savedTheme === 'dark') {
-        document.documentElement.classList.add('dark');
-      } else {
-        // Varsayılan olarak light mode
-        document.documentElement.classList.remove('dark');
-        if (!savedTheme) {
-          localStorage.setItem('theme', 'light');
-        }
-      }
+      // Her zaman açık tema kullan
+      document.documentElement.classList.remove('dark');
+      localStorage.setItem('theme', 'light');
     }
   }, []);
 

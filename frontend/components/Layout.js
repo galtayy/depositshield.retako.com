@@ -13,17 +13,10 @@ export default function Layout({ children }) {
   // Check for saved theme preference or system preference
   useEffect(() => {
     if (typeof window !== 'undefined') {
-      // Check localStorage first
-      const savedTheme = localStorage.getItem('theme');
-      if (savedTheme) {
-        setIsDarkMode(savedTheme === 'dark');
-        document.documentElement.classList.toggle('dark', savedTheme === 'dark');
-      } else {
-        // Varsayılan olarak light mode (sistem tercihi yerine)
-        setIsDarkMode(false);
-        document.documentElement.classList.remove('dark');
-        localStorage.setItem('theme', 'light');
-      }
+      // Her zaman açık tema kullan
+      setIsDarkMode(false);
+      document.documentElement.classList.remove('dark');
+      localStorage.setItem('theme', 'light');
     }
   }, []);
 
