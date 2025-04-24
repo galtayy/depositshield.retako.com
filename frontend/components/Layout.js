@@ -3,10 +3,10 @@ import Link from 'next/link';
 import { useRouter } from 'next/router';
 import { useAuth } from '../lib/auth';
 import Head from 'next/head';
+import CookieBanner from './CookieBanner';
 
 export default function Layout({ children }) {
   const [isMenuOpen, setIsMenuOpen] = useState(false);
-  const [isDarkMode, setIsDarkMode] = useState(false);
   const { user, logout } = useAuth();
   const router = useRouter();
 
@@ -14,7 +14,6 @@ export default function Layout({ children }) {
   useEffect(() => {
     if (typeof window !== 'undefined') {
       // Her zaman açık tema kullan
-      setIsDarkMode(false);
       document.documentElement.classList.remove('dark');
       localStorage.setItem('theme', 'light');
     }
@@ -31,13 +30,6 @@ export default function Layout({ children }) {
   const handleLogout = () => {
     logout();
     closeMenu();
-  };
-
-  const toggleTheme = () => {
-    const newTheme = isDarkMode ? 'light' : 'dark';
-    setIsDarkMode(!isDarkMode);
-    document.documentElement.classList.toggle('dark');
-    localStorage.setItem('theme', newTheme);
   };
 
   const navLinks = [
@@ -104,7 +96,7 @@ export default function Layout({ children }) {
   };
 
   return (
-    <div className={`flex flex-col min-h-screen bg-background ${isDarkMode ? 'dark' : ''}`}>
+    <div className="flex flex-col min-h-screen bg-background">
       <Head>
         <link rel="stylesheet" href="/styles/modern/theme.css" />
       </Head>
@@ -136,15 +128,6 @@ export default function Layout({ children }) {
                 </Link>
               ))}
               
-              {/* Theme toggle button */}
-              <button
-                onClick={toggleTheme}
-                className="p-2 rounded-md text-gray-700 dark:text-gray-300 hover:bg-gray-100 dark:hover:bg-gray-700 transition-colors"
-                aria-label={`Switch to ${isDarkMode ? 'light' : 'dark'} theme`}
-              >
-                <Icon name={isDarkMode ? 'sun' : 'moon'} />
-              </button>
-              
               <button
                 onClick={handleLogout}
                 className="flex items-center px-3 py-2 text-gray-700 dark:text-gray-300 hover:bg-gray-100 dark:hover:bg-gray-700 rounded-md transition-colors"
@@ -156,14 +139,6 @@ export default function Layout({ children }) {
 
             {/* Mobile Menu Button */}
             <div className="flex items-center md:hidden">
-              <button
-                onClick={toggleTheme}
-                className="p-2 mr-2 rounded-md text-gray-700 dark:text-gray-300 hover:bg-gray-100 dark:hover:bg-gray-700"
-                aria-label={`Switch to ${isDarkMode ? 'light' : 'dark'} theme`}
-              >
-                <Icon name={isDarkMode ? 'sun' : 'moon'} />
-              </button>
-              
               <button
                 onClick={toggleMenu}
                 className="p-2 rounded-md text-gray-700 dark:text-gray-300 hover:bg-gray-100 dark:hover:bg-gray-700 focus:outline-none"
@@ -249,10 +224,16 @@ export default function Layout({ children }) {
               <Link href="/privacy" className="text-gray-600 dark:text-gray-400 hover:text-primary dark:hover:text-primary-light text-sm">
                 Privacy Policy
               </Link>
+              <Link href="/cookies" className="text-gray-600 dark:text-gray-400 hover:text-primary dark:hover:text-primary-light text-sm">
+                Cookie Policy
+              </Link>
             </div>
           </div>
         </div>
       </footer>
+
+      {/* Cookie Banner */}
+      <CookieBanner />
     </div>
   );
 }

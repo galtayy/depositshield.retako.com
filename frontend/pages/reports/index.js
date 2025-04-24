@@ -8,7 +8,6 @@ import { apiService } from '../../lib/api';
 export default function Reports() {
   const [reports, setReports] = useState([]);
   const [loading, setLoading] = useState(true);
-  const [filter, setFilter] = useState('all'); // 'all', 'landlord', 'renter'
   const router = useRouter();
 
   useEffect(() => {
@@ -18,11 +17,45 @@ export default function Reports() {
   const fetchReports = async () => {
     try {
       setLoading(true);
-      const response = await apiService.reports.getAll();
-      setReports(response.data);
+      
+      // API URL'leri
+      const DEVELOPMENT_API_URL = 'http://localhost:5050';
+      const PRODUCTION_API_URL = 'https://api.depositshield.retako.com';
+      
+      // Çalışma ortamına göre API URL'ini belirle
+      const isProduction = typeof window !== 'undefined' ? window.location.hostname !== 'localhost' : false;
+      const apiBaseUrl = isProduction ? PRODUCTION_API_URL : DEVELOPMENT_API_URL;
+      
+      try {
+        // Önce standart yöntemi dene
+        const response = await apiService.reports.getAll();
+        setReports(response.data);
+        console.log('Reports loaded successfully:', response.data.length);
+      } catch (mainError) {
+        console.error('Standard API call failed:', mainError);
+        
+        // Alternatif yöntem: Doğrudan axios kullan
+        try {
+          console.log('Trying alternative method with axios...');
+          const axios = (await import('axios')).default;
+          const token = localStorage.getItem('token');
+          
+          const altResponse = await axios.get(`${apiBaseUrl}/api/reports`, {
+            headers: token ? { Authorization: `Bearer ${token}` } : {}
+          });
+          
+          console.log('Alternative API call successful:', altResponse.data);
+          setReports(altResponse.data);
+        } catch (altError) {
+          console.error('Alternative API call also failed:', altError);
+          toast.error('An error occurred while loading the report list.');
+          setReports([]);
+        }
+      }
     } catch (error) {
       console.error('Reports fetch error:', error);
       toast.error('An error occurred while loading the report list.');
+      setReports([]);
     } finally {
       setLoading(false);
     }
@@ -41,35 +74,21 @@ export default function Reports() {
     }
   };
 
-  // Report type badge
-  const getReportTypeBadge = (type) => {
+  // Helper function to get friendly report type name
+  const getReportTypeName = (type) => {
     switch (type) {
       case 'move-in':
-        return <span className="badge badge-move-in">Pre-Move-In</span>;
+        return 'Pre-Move-In';
       case 'move-out':
-        return <span className="badge badge-move-out">Post-Move-Out</span>;
+        return 'Post-Move-Out';
       case 'general':
-        return <span className="badge badge-general">General</span>;
+        return 'General Observation';
       default:
-        return null;
+        return 'Unknown';
     }
   };
 
-  // Helper function to display role badge
-  const getRoleBadge = (role) => {
-    if (role === 'landlord') {
-      return <span className="badge badge-landlord">Landlord</span>;
-    } else if (role === 'renter') {
-      return <span className="badge badge-tenant">Tenant</span>;
-    } else {
-      return <span className="badge badge-other">Other</span>;
-    }
-  };
 
-  // Filtering
-  const filteredReports = filter === 'all' 
-    ? reports 
-    : reports.filter(report => report.property?.role_at_this_property === filter);
 
   if (loading) {
     return (
@@ -97,41 +116,7 @@ export default function Reports() {
           </Link>
         </div>
 
-        {/* Filters */}
-        <div className="mb-6">
-          <div className="bg-white dark:bg-gray-800 p-4 rounded-lg shadow-sm flex flex-wrap gap-2">
-            <button
-              onClick={() => setFilter('all')}
-              className={`px-4 py-2 text-sm font-medium rounded-lg transition-colors ${
-                filter === 'all'
-                  ? 'bg-primary text-white dark:bg-primary-light dark:text-gray-900'
-                  : 'bg-gray-100 text-gray-700 hover:bg-gray-200 dark:bg-gray-700 dark:text-gray-200 dark:hover:bg-gray-600'
-              }`}
-            >
-              All Reports
-            </button>
-            <button
-              onClick={() => setFilter('landlord')}
-              className={`px-4 py-2 text-sm font-medium rounded-lg transition-colors ${
-                filter === 'landlord'
-                  ? 'bg-purple-600 text-white'
-                  : 'bg-gray-100 text-gray-700 hover:bg-gray-200 dark:bg-gray-700 dark:text-gray-200 dark:hover:bg-gray-600'
-              }`}
-            >
-              Landlord Reports
-            </button>
-            <button
-              onClick={() => setFilter('renter')}
-              className={`px-4 py-2 text-sm font-medium rounded-lg transition-colors ${
-                filter === 'renter'
-                  ? 'bg-blue-600 text-white'
-                  : 'bg-gray-100 text-gray-700 hover:bg-gray-200 dark:bg-gray-700 dark:text-gray-200 dark:hover:bg-gray-600'
-              }`}
-            >
-              Tenant Reports
-            </button>
-          </div>
-        </div>
+
 
         {reports.length === 0 ? (
           <div className="empty-state">
@@ -148,24 +133,9 @@ export default function Reports() {
               Create Your First Report
             </Link>
           </div>
-        ) : filteredReports.length === 0 ? (
-          <div className="empty-state">
-            <div className="empty-state-icon">
-              <svg xmlns="http://www.w3.org/2000/svg" fill="none" viewBox="0 0 24 24" stroke="currentColor">
-                <path strokeLinecap="round" strokeLinejoin="round" strokeWidth={2} d="M3 7v10a2 2 0 002 2h14a2 2 0 002-2V9a2 2 0 00-2-2h-6l-2-2H5a2 2 0 00-2 2z" />
-              </svg>
-            </div>
-            <h3 className="empty-state-title">No reports found for this filter</h3>
-            <p className="empty-state-description">
-              There are no reports matching the selected filter criteria.
-            </p>
-            <button onClick={() => setFilter('all')} className="btn btn-primary btn-elevated">
-              Show All Reports
-            </button>
-          </div>
         ) : (
           <div className="space-y-4">
-            {filteredReports.map((report) => (
+            {reports.map((report) => (
               <div key={report.id} className="bg-white dark:bg-gray-800 rounded-xl shadow-md p-5 hover-card">
                 <div className="flex flex-col md:flex-row md:justify-between md:items-center">
                   <div className="flex-1">
@@ -180,9 +150,13 @@ export default function Reports() {
                           })}
                         </p>
                       </div>
-                      <div className="flex flex-col md:flex-row items-end md:items-start space-y-2 md:space-y-0 md:space-x-2">
-                        {getReportTypeBadge(report.type)}
-                        {report.property && getRoleBadge(report.property.role_at_this_property)}
+                      <div className="flex items-center gap-2">
+                        <span className={`inline-flex items-center px-2 py-1 text-xs font-medium rounded-full
+                        ${report.type === 'move-in' ? 'bg-green-100 text-green-800' : 
+                          report.type === 'move-out' ? 'bg-red-100 text-red-800' : 
+                          'bg-blue-100 text-blue-800'}`}>
+                          {getReportTypeName(report.type)}
+                        </span>
                       </div>
                     </div>
                     
@@ -195,7 +169,7 @@ export default function Reports() {
                         <path strokeLinecap="round" strokeLinejoin="round" strokeWidth={2} d="M17.657 16.657L13.414 20.9a1.998 1.998 0 01-2.827 0l-4.244-4.243a8 8 0 1111.314 0z" />
                         <path strokeLinecap="round" strokeLinejoin="round" strokeWidth={2} d="M15 11a3 3 0 11-6 0 3 3 0 016 0z" />
                       </svg>
-                      <span>{report.property?.address || 'Unknown address'}</span>
+                      <span>{report.address || report.property?.address || 'Unknown address'}</span>
                     </p>
                   </div>
                   
@@ -211,15 +185,18 @@ export default function Reports() {
                       View
                     </button>
                     
-                    <button
-                      onClick={() => handleDelete(report.id)}
-                      className="text-red-500 hover:text-red-700 dark:text-red-400 dark:hover:text-red-300 transition-colors p-2 rounded-full hover:bg-red-50 dark:hover:bg-red-900/20"
-                      aria-label="Delete"
-                    >
-                      <svg xmlns="http://www.w3.org/2000/svg" className="h-5 w-5" fill="none" viewBox="0 0 24 24" stroke="currentColor">
-                        <path strokeLinecap="round" strokeLinejoin="round" strokeWidth={2} d="M19 7l-.867 12.142A2 2 0 0116.138 21H7.862a2 2 0 01-1.995-1.858L5 7m5 4v6m4-6v6m1-10V4a1 1 0 00-1-1h-4a1 1 0 00-1 1v3M4 7h16" />
-                      </svg>
-                    </button>
+                    {/* Silme butonu sadece onaylanmamış raporlarda gösterilecek */}
+                    {report.approval_status !== 'approved' && (
+                      <button
+                        onClick={() => handleDelete(report.id)}
+                        className="text-red-500 hover:text-red-700 dark:text-red-400 dark:hover:text-red-300 transition-colors p-2 rounded-full hover:bg-red-50 dark:hover:bg-red-900/20"
+                        aria-label="Delete"
+                      >
+                        <svg xmlns="http://www.w3.org/2000/svg" className="h-5 w-5" fill="none" viewBox="0 0 24 24" stroke="currentColor">
+                          <path strokeLinecap="round" strokeLinejoin="round" strokeWidth={2} d="M19 7l-.867 12.142A2 2 0 0116.138 21H7.862a2 2 0 01-1.995-1.858L5 7m5 4v6m4-6v6m1-10V4a1 1 0 00-1-1h-4a1 1 0 00-1 1v3M4 7h16" />
+                        </svg>
+                      </button>
+                    )}
                   </div>
                 </div>
               </div>

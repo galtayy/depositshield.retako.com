@@ -1,0 +1,372 @@
+  const fetchPhotos = async () => {
+    try {
+      console.log('Fetching photos for report:', id);
+      const response = await apiService.photos.getByReport(id);
+      console.log('Photos response:', response.data);
+      
+      if (Array.isArray(response.data)) {
+        setPhotos(response.data);
+      } else {
+        console.error('Invalid photos data format:', response.data);
+        setPhotos([]);
+      }
+    } catch (error) {
+      console.error('Photos fetch error:', error);
+      toast.error('Fotoğraflar yüklenirken bir hata oluştu.');
+      setPhotos([]);
+    } finally {
+      setPhotoLoading(false);
+    }
+  };
+
+  const handlePhotoUpload = (e) => {
+    if (e.target.files) {
+      const selectedFiles = Array.from(e.target.files);
+      setNewPhotos(prevPhotos => [...prevPhotos, ...selectedFiles]);
+      
+      // Yeni fotoğraflar için boş notlar ve etiketler oluştur
+      const newNotes = { ...photoNotes };
+      const newTags = { ...tags };
+      
+      selectedFiles.forEach((_, index) => {
+        const photoId = 'new-' + (newPhotos.length + index);
+        newNotes[photoId] = '';
+        newTags[photoId] = [];
+      });
+      
+      setPhotoNotes(newNotes);
+      setTags(newTags);
+    }
+  };
+
+  const removeNewPhoto = (index) => {
+    setNewPhotos(newPhotos.filter((_, i) => i !== index));
+    
+    // Notları ve etiketleri güncelle
+    const newNotes = { ...photoNotes };
+    const newTags = { ...tags };
+    
+    delete newNotes['new-' + index];
+    delete newTags['new-' + index];
+    
+    setPhotoNotes(newNotes);
+    setTags(newTags);
+  };
+
+  const handleDeletePhoto = async (photoId) => {
+    if (confirm('Bu fotoğrafı silmek istediğinize emin misiniz? Bu işlem geri alınamaz.')) {
+      try {
+        console.log('Deleting photo:', photoId);
+        await apiService.photos.delete(photoId);
+        console.log('Photo deleted');
+        
+        // Fotoğraf listesini güncelle
+        setPhotos(photos.filter(photo => photo.id !== photoId));
+        toast.success('Fotoğraf başarıyla silindi.');
+      } catch (error) {
+        console.error('Photo delete error:', error);
+        toast.error('Fotoğraf silinirken bir hata oluştu.');
+      }
+    }
+  };
+
+  const handleNoteChange = (id, note) => {
+    setPhotoNotes({
+      ...photoNotes,
+      [id]: note
+    });
+  };
+
+  const addTag = (id, tag) => {
+    if (!tag.trim()) return;
+    
+    setTags({
+      ...tags,
+      [id]: [...(tags[id] || []), tag.trim()]
+    });
+  };
+
+  const removeTag = (photoId, tagIndex) => {
+    setTags({
+      ...tags,
+      [photoId]: tags[photoId].filter((_, i) => i !== tagIndex)
+    });
+  };
+
+  const handleKeyPress = (e, id) => {
+    if (e.key === 'Enter' && e.target.value.trim()) {
+      addTag(id, e.target.value);
+      e.target.value = '';
+      e.preventDefault();
+    }
+  };import { useState, useEffect, useRef } from 'react';
+import { useRouter } from 'next/router';
+import Link from 'next/link';
+import { toast } from 'react-toastify';
+import Layout from '../../components/Layout';
+import { apiService } from '../../lib/api';
+import { useAuth } from '../../lib/auth';
+
+export default function EditReport() {
+  const { user, loading: authLoading } = useAuth();
+  const [title, setTitle] = useState('');
+  const [description, setDescription] = useState('');
+  const [reportType, setReportType] = useState('');
+  const [loading, setLoading] = useState(true);
+  const [isSubmitting, setIsSubmitting] = useState(false);
+  
+  // Fotoğraflar için state değişkenleri
+  const [photos, setPhotos] = useState([]);
+  const [photoLoading, setPhotoLoading] = useState(true);
+  const [newPhotos, setNewPhotos] = useState([]);
+  const [previewPhotos, setPreviewPhotos] = useState([]);
+  const [photoNotes, setPhotoNotes] = useState({});
+  const [tags, setTags] = useState({});
+  const fileInputRef = useRef(null);
+  
+  const router = useRouter();
+  const { id } = router.query;
+
+  useEffect(() => {
+    if (!authLoading && !user) {
+      router.push('/login');
+      return;
+    }
+
+    if (id) {
+      fetchReport();
+      fetchPhotos();
+    }
+  }, [id, user, authLoading, router]);
+
+  // Fotoğrafları önizle
+  useEffect(() => {
+    if (!newPhotos.length) {
+      setPreviewPhotos([]);
+      return;
+    }
+
+    const newPreviewPhotos = [];
+    for (let i = 0; i < newPhotos.length; i++) {
+      const photo = newPhotos[i];
+      const photoURL = URL.createObjectURL(photo);
+      newPreviewPhotos.push(photoURL);
+    }
+
+    setPreviewPhotos(newPreviewPhotos);
+
+    // Temizlik fonksiyonu
+    return () => {
+      newPreviewPhotos.forEach(url => URL.revokeObjectURL(url));
+    };
+  }, [newPhotos]);
+
+  const fetchReport = async () => {
+    try {
+      console.log('Fetching report details:', id);
+      const response = await apiService.reports.getById(id);
+      console.log('Report details response:', response.data);
+      
+      const report = response.data;
+      setTitle(report.title || '');
+      setDescription(report.description || '');
+      setReportType(report.type || '');
+    } catch (error) {
+      console.error('Report fetch error:', error);
+      let errorMessage = 'An error occurred while loading report information.';
+      
+      if (error.response) {
+        console.error('API response error:', error.response.data);
+        errorMessage = error.response.data.message || errorMessage;
+      }
+      
+      toast.error(errorMessage);
+    } finally {
+      setLoading(false);
+    }
+  };
+
+  const handleSubmit = async (e) => {
+    e.preventDefault();
+    
+    if (!title || !reportType) {
+      toast.error('Please fill in all required fields.');
+      return;
+    }
+    
+    setIsSubmitting(true);
+    
+    try {
+      const reportData = {
+        title,
+        description,
+        type: reportType
+      };
+      
+      console.log('Sending report update request:', reportData);
+      const response = await apiService.reports.update(id, reportData);
+      console.log('Report update response:', response.data);
+      
+      toast.success('Report updated successfully.');
+      router.push(`/reports/${id}`);
+    } catch (error) {
+      console.error('Report update error:', error);
+      let errorMessage = 'An error occurred while updating the report.';
+      
+      if (error.response) {
+        console.error('API response error:', error.response.data);
+        errorMessage = error.response.data.message || errorMessage;
+      }
+      
+      toast.error(errorMessage);
+    } finally {
+      setIsSubmitting(false);
+    }
+  };
+
+  if (loading || authLoading) {
+    return (
+      <Layout>
+        <div className="container mx-auto px-4 py-8">
+          <h1 className="text-2xl font-bold mb-6">Edit Report</h1>
+          <div className="flex justify-center items-center py-12">
+            <div className="animate-spin rounded-full h-12 w-12 border-t-2 border-b-2 border-primary"></div>
+          </div>
+        </div>
+      </Layout>
+    );
+  }
+
+  return (
+    <Layout>
+      <div className="container mx-auto px-4 py-8">
+        <div className="flex items-center mb-6">
+          <button
+            onClick={() => router.back()}
+            className="mr-4 text-gray-600 hover:text-gray-900"
+            aria-label="Back"
+          >
+            <svg xmlns="http://www.w3.org/2000/svg" className="h-6 w-6" fill="none" viewBox="0 0 24 24" stroke="currentColor">
+              <path strokeLinecap="round" strokeLinejoin="round" strokeWidth={2} d="M15 19l-7-7 7-7" />
+            </svg>
+          </button>
+          <h1 className="text-2xl font-bold">Edit Report</h1>
+        </div>
+        
+        <div className="bg-white rounded-lg shadow-md p-6">
+          <form onSubmit={handleSubmit} className="space-y-6">
+            <div>
+              <label htmlFor="title" className="block text-sm font-medium text-gray-700 mb-1">
+                Report Title*
+              </label>
+              <input
+                id="title"
+                type="text"
+                value={title}
+                onChange={(e) => setTitle(e.target.value)}
+                className="input"
+                placeholder="Enter a short title for the report"
+                required
+              />
+            </div>
+            
+            <div>
+              <label htmlFor="description" className="block text-sm font-medium text-gray-700 mb-1">
+                Report Description
+              </label>
+              <textarea
+                id="description"
+                value={description}
+                onChange={(e) => setDescription(e.target.value)}
+                rows={3}
+                className="input"
+                placeholder="General description about the report (optional)"
+              />
+            </div>
+            
+            <div>
+              <label className="block text-sm font-medium text-gray-700 mb-2">
+                Report Type*
+              </label>
+              
+              <div className="space-y-3">
+                <div className="flex items-center">
+                  <input
+                    id="type-move-in"
+                    name="reportType"
+                    type="radio"
+                    value="move-in"
+                    checked={reportType === 'move-in'}
+                    onChange={() => setReportType('move-in')}
+                    className="h-4 w-4 text-primary focus:ring-primary border-gray-300"
+                    required
+                  />
+                  <label htmlFor="type-move-in" className="ml-3 block text-sm text-gray-700">
+                    Pre-Move-In
+                  </label>
+                </div>
+                
+                <div className="flex items-center">
+                  <input
+                    id="type-move-out"
+                    name="reportType"
+                    type="radio"
+                    value="move-out"
+                    checked={reportType === 'move-out'}
+                    onChange={() => setReportType('move-out')}
+                    className="h-4 w-4 text-primary focus:ring-primary border-gray-300"
+                  />
+                  <label htmlFor="type-move-out" className="ml-3 block text-sm text-gray-700">
+                    Post-Move-Out
+                  </label>
+                </div>
+                
+                <div className="flex items-center">
+                  <input
+                    id="type-general"
+                    name="reportType"
+                    type="radio"
+                    value="general"
+                    checked={reportType === 'general'}
+                    onChange={() => setReportType('general')}
+                    className="h-4 w-4 text-primary focus:ring-primary border-gray-300"
+                  />
+                  <label htmlFor="type-general" className="ml-3 block text-sm text-gray-700">
+                    General Observation
+                  </label>
+                </div>
+              </div>
+            </div>
+            
+            <div className="flex justify-end space-x-3 pt-4">
+              <button
+                type="button"
+                onClick={() => router.back()}
+                className="btn btn-secondary"
+                disabled={isSubmitting}
+              >
+                Cancel
+              </button>
+              
+              <button
+                type="submit"
+                className="btn btn-primary"
+                disabled={isSubmitting}
+              >
+                {isSubmitting ? (
+                  <span className="flex items-center">
+                    <svg className="animate-spin -ml-1 mr-2 h-4 w-4 text-white" xmlns="http://www.w3.org/2000/svg" fill="none" viewBox="0 0 24 24">
+                      <circle className="opacity-25" cx="12" cy="12" r="10" stroke="currentColor" strokeWidth="4"></circle>
+                      <path className="opacity-75" fill="currentColor" d="M4 12a8 8 0 018-8V0C5.373 0 0 5.373 0 12h4zm2 5.291A7.962 7.962 0 014 12H0c0 3.042 1.135 5.824 3 7.938l3-2.647z"></path>
+                    </svg>
+                    Saving...
+                  </span>
+                ) : 'Save Changes'}
+              </button>
+            </div>
+          </form>
+        </div>
+      </div>
+    </Layout>
+  );
+}

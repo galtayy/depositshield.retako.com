@@ -96,8 +96,26 @@ class Report {
   // UUID ile rapor bulma
   static async findByUuid(uuid) {
     try {
+      // is_archived kolonunu sorgudan çıkartalım, çünkü veritabanında yok
       const query = `
-        SELECT r.*, u.name as creator_name, p.address, p.role_at_this_property 
+        SELECT r.*, r.approval_status, r.approved_at, r.rejected_at,
+        u.name as creator_name, u.email as creator_email, p.address, p.role_at_this_property,
+               CASE 
+                WHEN p.role_at_this_property = 'landlord' THEN u.name 
+                ELSE '' 
+               END as landlord_name,
+               CASE 
+                WHEN p.role_at_this_property = 'landlord' THEN u.email 
+                ELSE '' 
+               END as landlord_email,
+               CASE 
+                WHEN p.role_at_this_property = 'renter' THEN u.name 
+                ELSE '' 
+               END as tenant_name,
+               CASE 
+                WHEN p.role_at_this_property = 'renter' THEN u.email 
+                ELSE '' 
+               END as tenant_email
         FROM reports r
         JOIN users u ON r.created_by = u.id
         JOIN properties p ON r.property_id = p.id
@@ -105,27 +123,159 @@ class Report {
       `;
       
       const [rows] = await db.execute(query, [uuid]);
-      return rows.length ? rows[0] : null;
+      
+      if (rows.length === 0) {
+        return null;
+      }
+      
+      // Eğer tenant/landlord tanımlanmamışsa, creator bilgilerini kullan
+      const report = rows[0];
+      if (!report.tenant_name && !report.tenant_email) {
+        report.tenant_name = report.creator_name;
+        report.tenant_email = report.creator_email;
+      }
+      if (!report.landlord_name && !report.landlord_email) {
+        report.landlord_name = 'Property Owner';
+        report.landlord_email = process.env.EMAIL_FROM; // Varsayılan sistem e-postası
+      }
+      
+      // Varsayılan olarak is_archived = false ekleyelim
+      report.is_archived = false;
+      
+      return report;
     } catch (error) {
+      console.error('UUID ile rapor bulma hatası:', error);
       throw error;
+    }
+  }
+
+  // Helper method to format date for MySQL
+  static formatDateForMySQL(dateString) {
+    if (!dateString) return null;
+    
+    try {
+      // ISO string'i Date objesine çevir
+      const date = new Date(dateString);
+      
+      // MySQL datetime format: YYYY-MM-DD HH:MM:SS
+      return date.toISOString().slice(0, 19).replace('T', ' ');
+    } catch (error) {
+      console.error('Date format error:', error);
+      return null;
     }
   }
 
   // Rapor güncelleme
   static async update(id, reportData) {
     try {
+      // Temel rapor alanlarını güncelleme için dinamik SQL oluşturma
+      let fields = [];
+      let values = [];
+      
+      // İçerik değişikliği varsa, onay durumunu null yap
+      const contentChanged = reportData.title !== undefined || 
+                          reportData.description !== undefined || 
+                          reportData.type !== undefined;
+      
+      // Rapor temel bilgileri
+      if (reportData.title !== undefined) {
+        fields.push('title = ?');
+        values.push(reportData.title);
+      }
+      
+      if (reportData.description !== undefined) {
+        fields.push('description = ?');
+        values.push(reportData.description);
+      }
+      
+      if (reportData.type !== undefined) {
+        fields.push('type = ?');
+        values.push(reportData.type);
+      }
+      
+      // İçerik değiştiğinde onay durumunu sıfırla (reddedilmiş raporlar için)
+      if (contentChanged && reportData.reset_approval !== false) {
+        fields.push('approval_status = ?');
+        values.push(null);
+        
+        // Onaylanma ve reddedilme zamanlarını sıfırla
+        fields.push('approved_at = ?');
+        values.push(null);
+        
+        fields.push('rejected_at = ?');
+        values.push(null);
+        
+        fields.push('rejection_message = ?');
+        values.push(null);
+      } else {
+        // Onay durumu ile ilgili alanlar manuel olarak belirtilmişse
+        if (reportData.approval_status !== undefined) {
+          fields.push('approval_status = ?');
+          values.push(reportData.approval_status);
+        }
+        
+        if (reportData.approved_at !== undefined) {
+          fields.push('approved_at = ?');
+          values.push(Report.formatDateForMySQL(reportData.approved_at));
+        }
+        
+        if (reportData.rejected_at !== undefined) {
+          fields.push('rejected_at = ?');
+          values.push(Report.formatDateForMySQL(reportData.rejected_at));
+        }
+        
+        if (reportData.approved_message !== undefined) {
+          fields.push('approved_message = ?');
+          values.push(reportData.approved_message);
+        }
+        
+        if (reportData.rejection_message !== undefined) {
+          fields.push('rejection_message = ?');
+          values.push(reportData.rejection_message);
+        }
+      }
+      
+      // UUID güncelleme isteği varsa yeni UUID oluştur
+      if (reportData.generate_new_uuid) {
+        const { v4: uuidv4 } = require('uuid');
+        fields.push('uuid = ?');
+        values.push(uuidv4());
+      }
+      
+      // Arşiv ile ilgili alanlar
+      if (reportData.is_archived !== undefined) {
+        fields.push('is_archived = ?');
+        values.push(reportData.is_archived);
+      }
+      
+      if (reportData.archived_at !== undefined) {
+        fields.push('archived_at = ?');
+        values.push(Report.formatDateForMySQL(reportData.archived_at));
+      }
+      
+      if (reportData.archive_reason !== undefined) {
+        fields.push('archive_reason = ?');
+        values.push(reportData.archive_reason);
+      }
+      
+      // Güncellenme zamanını her zaman ekle
+      fields.push('updated_at = CURRENT_TIMESTAMP');
+      
+      // Eğer güncelleme alanı yoksa, false döndür
+      if (fields.length === 1) { // Sadece updated_at varsa
+        return false;
+      }
+      
       const query = `
         UPDATE reports 
-        SET title = ?, description = ?, type = ?, updated_at = CURRENT_TIMESTAMP 
+        SET ${fields.join(', ')} 
         WHERE id = ?
       `;
+      
+      // id değerini values array'ine ekle
+      values.push(id);
 
-      const [result] = await db.execute(query, [
-        reportData.title,
-        reportData.description,
-        reportData.type,
-        id
-      ]);
+      const [result] = await db.execute(query, values);
 
       return result.affectedRows > 0;
     } catch (error) {

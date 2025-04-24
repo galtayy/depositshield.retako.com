@@ -29,10 +29,91 @@ export default function PropertyDetail() {
   const fetchProperty = async () => {
     try {
       console.log('Fetching property details:', id);
-      const response = await apiService.properties.getById(id);
-      console.log('Property details response:', response.data);
+      
+      // API URL'yi kontrol et
+      const isProduction = typeof window !== 'undefined' ? window.location.hostname !== 'localhost' : process.env.NODE_ENV === 'production';
+      console.log('Property Details - Environment:', isProduction ? 'PRODUCTION' : 'DEVELOPMENT');
+      
+      // ServiceWorker sorunlarını önlemek için doğrudan URL oluştur
+      const apiUrl = isProduction ? 'https://api.depositshield.retako.com' : 'http://localhost:5050';
+      console.log('Using API URL:', apiUrl);
+      
+      let response;
+      try {
+        // Önce normal yöntemi dene
+        response = await apiService.properties.getById(id);
+        console.log('Property details response:', response.data);
+      } catch (mainError) {
+        console.error('Standard API call failed:', mainError);
+        
+        // Alternatif yöntem: Doğrudan axios kullan
+        try {
+          const axios = (await import('axios')).default;
+          const token = localStorage.getItem('token');
+          
+          const altResponse = await axios.get(`${apiUrl}/api/properties/${id}`, {
+            headers: token ? { Authorization: `Bearer ${token}` } : {}
+          });
+          
+          console.log('Alternative API call successful:', altResponse.data);
+          response = altResponse;
+        } catch (altError) {
+          console.error('Alternative API call also failed:', altError);
+          throw mainError; // Orijinal hatayı fırlat
+        }
+      }
       
       setProperty(response.data);
+
+      // Backend'den property_details alanı gelmiyor olabilir,
+      // localStorage'dan alıp kullanmayı deneyelim
+      if (!response.data.property_details) {
+        try {
+          const existingDetailsStr = localStorage.getItem('propertyDetails');
+          
+          if (existingDetailsStr) {
+            const existingDetails = JSON.parse(existingDetailsStr);
+            
+            if (existingDetails[id]) {
+              console.log('Loading property details from localStorage for ID:', id);
+              response.data.property_details = existingDetails[id];
+            } else {
+              console.log('No property details found in localStorage for ID:', id);
+              response.data.property_details = {
+                property_type: '',
+                bedrooms: '',
+                bathrooms: '',
+                living_rooms: '',
+                square_footage: '',
+                year_built: '',
+                parking_spaces: ''
+              };
+            }
+          } else {
+            console.log('No property details found in localStorage');
+            response.data.property_details = {
+              property_type: '',
+              bedrooms: '',
+              bathrooms: '',
+              living_rooms: '',
+              square_footage: '',
+              year_built: '',
+              parking_spaces: ''
+            };
+          }
+        } catch (error) {
+          console.error('Error loading property details from localStorage:', error);
+          response.data.property_details = {
+            property_type: '',
+            bedrooms: '',
+            bathrooms: '',
+            living_rooms: '',
+            square_footage: '',
+            year_built: '',
+            parking_spaces: ''
+          };
+        }
+      }
     } catch (error) {
       console.error('Property fetch error:', error);
       let errorMessage = 'An error occurred while loading property information.';
@@ -51,10 +132,42 @@ export default function PropertyDetail() {
   const fetchPropertyReports = async () => {
     try {
       console.log('Fetching reports for property:', id);
-      const response = await apiService.reports.getByProperty(id);
-      console.log('Reports response:', response.data);
       
-      setReports(response.data);
+      // API URL'yi kontrol et
+      const isProduction = typeof window !== 'undefined' ? window.location.hostname !== 'localhost' : process.env.NODE_ENV === 'production';
+      console.log('Property Reports - Environment:', isProduction ? 'PRODUCTION' : 'DEVELOPMENT');
+      
+      // ServiceWorker sorunlarını önlemek için doğrudan URL oluştur
+      const apiUrl = isProduction ? 'https://api.depositshield.retako.com' : 'http://localhost:5050';
+      console.log('Using API URL:', apiUrl);
+      
+      try {
+        // Önce normal yöntemi dene
+        const response = await apiService.reports.getByProperty(id);
+        console.log('Reports response:', response.data);
+        setReports(response.data);
+      } catch (mainError) {
+        console.error('Standard API call failed:', mainError);
+        
+        // Alternatif yöntem: Doğrudan axios kullan
+        try {
+          const axios = (await import('axios')).default;
+          const token = localStorage.getItem('token');
+          
+          const altResponse = await axios.get(`${apiUrl}/api/reports/property/${id}`, {
+            headers: token ? { Authorization: `Bearer ${token}` } : {}
+          });
+          
+          console.log('Alternative API call successful:', altResponse.data);
+          setReports(altResponse.data);
+        } catch (altError) {
+          console.error('Alternative API call also failed:', altError);
+          
+          // Her ikisi de başarısız olursa boş dizi ile devam et
+          setReports([]);
+          throw mainError; // Orijinal hatayı fırlat (aşağıdaki catch bloğuna gidecek)
+        }
+      }
     } catch (error) {
       console.error('Property reports fetch error:', error);
       let errorMessage = 'An error occurred while loading reports.';
@@ -161,29 +274,114 @@ export default function PropertyDetail() {
           <h1 className="text-2xl font-bold">Property Details</h1>
         </div>
         
-        <div className="bg-white rounded-lg shadow-md p-6 mb-6">
-          <div className="flex justify-between items-start mb-4">
-            <h2 className="text-xl font-semibold">{property.address}</h2>
-            <div>{getRoleBadge(property.role_at_this_property)}</div>
-          </div>
-          
-          <p className="text-gray-700 mb-6">{property.description}</p>
-          
-          <div className="flex flex-wrap gap-2">
-            <Link href={`/properties/${property.id}/edit`} className="btn btn-secondary">
-              Edit
-            </Link>
-            <button onClick={handleDelete} className="btn bg-red-600 hover:bg-red-700 text-white">
-              Delete
-            </button>
-            <Link href={`/reports/new?propertyId=${property.id}`} className="btn btn-primary">
-              Create New Report
-            </Link>
+        <div className="mb-6">
+          <div className="bg-white rounded-xl shadow-lg overflow-hidden border border-gray-100">
+            <div className="bg-indigo-50 p-4 flex items-center justify-between">
+              <h2 className="text-xl font-semibold text-indigo-700">{property.address}</h2>
+              <div className="hidden">{getRoleBadge(property.role_at_this_property)}</div>
+            </div>
+            
+            <div className="p-6">
+              <div className="bg-gray-50 rounded-lg p-4 mb-6">
+                <h3 className="text-gray-700 font-medium mb-2">Description</h3>
+                <p className="text-gray-700">{property.description}</p>
+              </div>
+              
+              {/* Property Details */}
+              <div className="bg-gray-50 rounded-lg p-4 mb-6">
+                <h3 className="text-gray-700 font-medium mb-3">Property Details</h3>
+                
+                <div className="grid md:grid-cols-2 gap-4">
+                  {property.property_details?.property_type && (
+                    <div>
+                      <span className="text-xs text-gray-500 block">Property Type:</span>
+                      <span className="text-sm text-gray-800 capitalize">{property.property_details.property_type}</span>
+                    </div>
+                  )}
+                  
+                  {property.property_details?.bedrooms && (
+                    <div>
+                      <span className="text-xs text-gray-500 block">Bedrooms:</span>
+                      <span className="text-sm text-gray-800">{property.property_details.bedrooms}</span>
+                    </div>
+                  )}
+                  
+                  {property.property_details?.bathrooms && (
+                    <div>
+                      <span className="text-xs text-gray-500 block">Bathrooms:</span>
+                      <span className="text-sm text-gray-800">{property.property_details.bathrooms}</span>
+                    </div>
+                  )}
+                  
+                  {property.property_details?.living_rooms && (
+                    <div>
+                      <span className="text-xs text-gray-500 block">Living Rooms:</span>
+                      <span className="text-sm text-gray-800">{property.property_details.living_rooms}</span>
+                    </div>
+                  )}
+                  
+                  {property.property_details?.square_footage && (
+                    <div>
+                      <span className="text-xs text-gray-500 block">Square Footage:</span>
+                      <span className="text-sm text-gray-800">{property.property_details.square_footage} sq ft</span>
+                    </div>
+                  )}
+                  
+                  {property.property_details?.year_built && (
+                    <div>
+                      <span className="text-xs text-gray-500 block">Year Built:</span>
+                      <span className="text-sm text-gray-800">{property.property_details.year_built}</span>
+                    </div>
+                  )}
+                  
+                  {property.property_details?.parking_spaces && (
+                    <div>
+                      <span className="text-xs text-gray-500 block">Parking Spaces:</span>
+                      <span className="text-sm text-gray-800">{property.property_details.parking_spaces}</span>
+                    </div>
+                  )}
+                </div>
+                
+                {(!property.property_details || 
+                  (!property.property_details.property_type &&
+                   !property.property_details.bedrooms &&
+                   !property.property_details.bathrooms &&
+                   !property.property_details.living_rooms &&
+                   !property.property_details.square_footage &&
+                   !property.property_details.year_built &&
+                   !property.property_details.parking_spaces)) && (
+                  <p className="text-sm text-gray-500 italic">No detailed information available. Update property details by clicking Edit Property button.</p>
+                )}
+              </div>
+              
+              <div className="flex flex-wrap gap-3">
+                <Link href={`/properties/${property.id}/edit`} className="btn btn-secondary hover:bg-gray-100 transition-all duration-300">
+                  <svg xmlns="http://www.w3.org/2000/svg" className="h-4 w-4 mr-2" fill="none" viewBox="0 0 24 24" stroke="currentColor">
+                    <path strokeLinecap="round" strokeLinejoin="round" strokeWidth={2} d="M15.232 5.232l3.536 3.536m-2.036-5.036a2.5 2.5 0 113.536 3.536L6.5 21.036H3v-3.572L16.732 3.732z" />
+                  </svg>
+                  Edit Property
+                </Link>
+                <button onClick={handleDelete} className="btn bg-red-50 text-red-600 border border-red-200 hover:bg-red-100 transition-all duration-300">
+                  <svg xmlns="http://www.w3.org/2000/svg" className="h-4 w-4 mr-2" fill="none" viewBox="0 0 24 24" stroke="currentColor">
+                    <path strokeLinecap="round" strokeLinejoin="round" strokeWidth={2} d="M19 7l-.867 12.142A2 2 0 0116.138 21H7.862a2 2 0 01-1.995-1.858L5 7m5 4v6m4-6v6m1-10V4a1 1 0 00-1-1h-4a1 1 0 00-1 1v3M4 7h16" />
+                  </svg>
+                  Delete Property
+                </button>
+              </div>
+            </div>
           </div>
         </div>
         
         <div className="mt-8">
-          <h2 className="text-xl font-semibold mb-4">Reports</h2>
+          <div className="flex justify-between items-center mb-4">
+            <h2 className="text-xl font-semibold">Reports</h2>
+            <Link href={`/reports/new?propertyId=${property.id}`} className="btn btn-primary">
+              <svg xmlns="http://www.w3.org/2000/svg" className="h-4 w-4 mr-2" fill="none" viewBox="0 0 24 24" stroke="currentColor">
+                <path strokeLinecap="round" strokeLinejoin="round" strokeWidth={2} d="M12 6v6m0 0v6m0-6h6m-6 0H6" />
+              </svg>
+              Create New Report
+            </Link>
+          </div>
           
           {reports.length === 0 ? (
             <div className="bg-white rounded-lg shadow-md p-6 text-center">

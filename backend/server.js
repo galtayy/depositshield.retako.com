@@ -10,17 +10,63 @@ dotenv.config();
 const app = express();
 const PORT = process.env.PORT || 5050;
 
-// Middleware 
-app.use(cors({
-  origin: '*',
+// Security middleware - kısıtlayıcı CSP kurallarını kaldır
+app.use((req, res, next) => {
+  // Güvenlik başlıklarını ayarla
+  res.setHeader('X-Content-Type-Options', 'nosniff');
+  res.setHeader('X-XSS-Protection', '1; mode=block');
+  
+  // Eski CSP başlığını kaldır (varsa)
+  res.removeHeader('Content-Security-Policy');
+  
+  // Daha geniş izin veren CSP kuralı
+  res.setHeader('Content-Security-Policy', "default-src 'self'; img-src 'self' data: blob: *; style-src 'self' 'unsafe-inline'; script-src 'self' 'unsafe-inline' 'unsafe-eval';");
+  
+  next();
+});
+
+// CORS ayarlarını gelişmiş olarak yapılandıralım
+const corsOptions = {
+  origin: function (origin, callback) {
+    // İzin verilen originler listesi
+    const allowedOrigins = [
+      'http://localhost:3000',  // Geliştirme ortamındaki frontend
+      'http://localhost:5050',  // Geliştirme ortamındaki backend
+      'https://depositshield.retako.com', // Canlı frontend
+      'https://api.depositshield.retako.com' // Canlı backend
+    ];
+    
+    // Origin olmayan istekler (postman, curl gibi olanlar için)
+    if (!origin) return callback(null, true);
+    
+    if (allowedOrigins.indexOf(origin) !== -1 || origin.match(/localhost/)) {
+      callback(null, true);
+    } else {
+      console.log('CORS rejected:', origin);
+      callback(new Error('CORS policy\'a izin verilmiyor'));
+    }
+  },
   methods: ['GET', 'POST', 'PUT', 'DELETE', 'OPTIONS'],
-  allowedHeaders: ['Content-Type', 'Authorization']
-}));
+  allowedHeaders: ['Content-Type', 'Authorization', 'X-Requested-With'],
+  credentials: true,
+  maxAge: 86400 // 24 saat
+};
+
+// CORS middleware
+app.use(cors(corsOptions));
 app.use(express.json());
 app.use(express.urlencoded({ extended: true }));
 
 // Statik dosyalar için uploads klasörünü tanımla
-app.use('/uploads', express.static(path.join(__dirname, 'uploads')));
+// Özellikle CORS ve cache için özel ayarlar ekleyelim
+app.use('/uploads', (req, res, next) => {
+  // CORS ayarlarını ekle
+  res.header('Access-Control-Allow-Origin', '*');
+  res.header('Access-Control-Allow-Methods', 'GET');
+  // Cache ayarlarını ekle
+  res.header('Cache-Control', 'public, max-age=31536000'); // 1 yıl önbellek
+  next();
+}, express.static(path.join(__dirname, 'uploads')));
 
 // Veritabanı bağlantısı
 const db = require('./config/database');

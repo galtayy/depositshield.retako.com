@@ -6,6 +6,107 @@ const Photo = require('../models/photo.model');
 const Report = require('../models/report.model');
 const Property = require('../models/property.model');
 
+// Kimlik doğrulama gerektirmeden rapora ait tüm fotoğrafları getirme endpoint'i
+exports.getPublicReportPhotos = async (req, res) => {
+  try {
+    const reportId = req.params.reportId;
+    
+    if (!reportId) {
+      return res.status(400).json({ message: 'Rapor ID belirtilmedi' });
+    }
+    
+    // Log inceleme için
+    console.log(`[DEBUG] Public access requested for photos of report ${reportId}`);
+    
+    // Rapor var mı kontrol et
+    const report = await Report.findById(reportId);
+    if (!report) {
+      return res.status(404).json({ message: 'Rapor bulunamadı' });
+    }
+    
+    // Güvenli erişim için gerekli başlıkları ekle
+    res.setHeader('Access-Control-Allow-Origin', '*');
+    res.setHeader('Access-Control-Allow-Methods', 'GET');
+    
+    // Rapora ait fotoğrafları getir
+    const photos = await Photo.findByReportId(reportId);
+    
+    // Debug için bağlantı bilgilerini yazdır
+    console.log(`[DEBUG] ${photos.length} photos found for report ${reportId}`);
+    console.log(`[DEBUG] Protocol: ${req.protocol}, Host: ${req.get('host')}`);
+    console.log(`[DEBUG] X-Forwarded headers:`, req.headers['x-forwarded-proto'], req.headers['x-forwarded-host']);
+    
+    // URL'den ziyade file_path + url alanı döndür - bu frontend'de daha esnek bir şekilde işlenebilir
+    const photosWithPaths = photos.map(photo => {
+      // Fotoğraf bilgilerini döndür
+      return {
+        ...photo,
+        file_path: photo.file_path, // file_path'i açıkça döndür
+        url: `/uploads/${photo.file_path}` // Göreceli URL döndür
+      };
+    });
+    
+    res.json(photosWithPaths);
+  } catch (error) {
+    console.error('Get public photos by report error:', error);
+    res.status(500).json({ message: 'Sunucu hatası' });
+  }
+};
+
+// Kimlik doğrulama gerektirmeden fotoğraf dosyasına erişim sağlayan endpoint
+exports.getPublicPhoto = async (req, res) => {
+  try {
+    const filename = req.params.filename;
+    
+    if (!filename) {
+      return res.status(400).json({ message: 'Dosya adı belirtilmedi' });
+    }
+    
+    // Güvenlik için dosya adını kontrol et - path traversal saldırılarını önle
+    if (filename.includes('../') || filename.includes('..\\')) {
+      return res.status(400).json({ message: 'Geçersiz dosya adı' });
+    }
+    
+    // Dosya yolu oluştur
+    const filePath = path.join(__dirname, '../uploads', filename);
+    
+    // Dosyanın var olup olmadığını kontrol et
+    if (!fs.existsSync(filePath)) {
+      return res.status(404).json({ message: 'Dosya bulunamadı' });
+    }
+    
+    // MIME türünü dosya uzantısından belirle
+    const ext = path.extname(filename).toLowerCase();
+    let contentType = 'application/octet-stream'; // Varsayılan
+    
+    if (ext === '.jpg' || ext === '.jpeg') {
+      contentType = 'image/jpeg';
+    } else if (ext === '.png') {
+      contentType = 'image/png';
+    } else if (ext === '.gif') {
+      contentType = 'image/gif';
+    }
+    
+    // Dosyayı gönder
+    res.setHeader('Content-Type', contentType);
+    res.setHeader('Cache-Control', 'public, max-age=31536000'); // 1 yıl önbellek
+    
+    // CORS headerlarını ekle
+    res.setHeader('Access-Control-Allow-Origin', '*');
+    res.setHeader('Access-Control-Allow-Methods', 'GET');
+    
+    // DEBUG için
+    console.log(`[DEBUG] Public photo access: ${filename}, content-type: ${contentType}`);
+    
+    // Dosyayı akış olarak gönder
+    const fileStream = fs.createReadStream(filePath);
+    fileStream.pipe(res);
+  } catch (error) {
+    console.error('Get public photo error:', error);
+    res.status(500).json({ message: 'Sunucu hatası' });
+  }
+};
+
 // Multer konfigürasyonu
 const storage = multer.diskStorage({
   destination: (req, file, cb) => {
@@ -102,9 +203,19 @@ exports.uploadPhoto = [
       // Fotoğraf bilgilerini getir
       const photo = await Photo.findById(photoId);
       
-      // Fotoğraf URL'ini ekle
-      const baseUrl = `${req.protocol}://${req.get('host')}`;
-      photo.url = `${baseUrl}/uploads/${photo.file_path}`;
+      // Fotoğraf URL'ini ekle - daha güvenilir bir yöntem kullanalım
+      // Önce istek protokolü ve host bilgisini kontrol edelim
+      let protocol = req.headers['x-forwarded-proto'] || req.protocol || 'http';
+      let host = req.headers['x-forwarded-host'] || req.get('host') || 'localhost:5050';
+      
+      // Canlı ortamda sabit değerleri kullanmayı tercih edebiliriz
+      if (process.env.NODE_ENV === 'production') {
+        protocol = 'https';
+        host = 'api.depositshield.retako.com';
+      }
+      
+      const baseUrl = `${protocol}://${host}`;
+      photo.url = `/uploads/${photo.file_path}`; // Sadece path döndürürken frontend tarafında baseUrl ile birleştirilecek
       
       res.status(201).json({
         message: 'Fotoğraf başarıyla yüklendi',
@@ -145,14 +256,22 @@ exports.getPhotosByReport = async (req, res) => {
     // Rapora ait fotoğrafları getir
     const photos = await Photo.findByReportId(reportId);
     
-    // Fotoğraf URL'lerini oluştur
-    const baseUrl = `${req.protocol}://${req.get('host')}`;
-    const photosWithUrls = photos.map(photo => ({
-      ...photo,
-      url: `${baseUrl}/uploads/${photo.file_path}`
-    }));
-    
-    res.json(photosWithUrls);
+      // Debug için bağlantı bilgilerini yazdır
+      console.log(`[Debug] Report ${reportId} için fotoğraf listesi döndürülüyor`);
+      console.log(`[Debug] Protocol: ${req.protocol}, Host: ${req.get('host')}`);
+      console.log(`[Debug] X-Forwarded headers:`, req.headers['x-forwarded-proto'], req.headers['x-forwarded-host']);
+      
+      // URL'den ziyade file_path + url alanı döndür - bu frontend'de daha esnek bir şekilde işlenebilir
+      const photosWithPaths = photos.map(photo => {
+        // Fotoğraf bilgilerini döndür
+        return {
+          ...photo,
+          file_path: photo.file_path, // file_path'i açıkça döndür
+          url: `/uploads/${photo.file_path}` // Göreceli URL döndür
+        };
+      });
+      
+      res.json(photosWithPaths);
   } catch (error) {
     console.error('Get photos by report error:', error);
     res.status(500).json({ message: 'Sunucu hatası' });
@@ -179,9 +298,18 @@ exports.getPhotoById = async (req, res) => {
       return res.status(403).json({ message: 'Bu fotoğrafa erişim izniniz yok' });
     }
     
-    // Fotoğraf URL'i oluştur
-    const baseUrl = `${req.protocol}://${req.get('host')}`;
-    photo.url = `${baseUrl}/uploads/${photo.file_path}`;
+    // Fotoğraf URL'i oluştur - daha güvenilir bir yöntem kullanalım
+    // Önce istek protokolü ve host bilgisini kontrol edelim
+    let protocol = req.headers['x-forwarded-proto'] || req.protocol || 'http';
+    let host = req.headers['x-forwarded-host'] || req.get('host') || 'localhost:5050';
+    
+    // Canlı ortamda sabit değerleri kullanmayı tercih edebiliriz
+    if (process.env.NODE_ENV === 'production') {
+      protocol = 'https';
+      host = 'api.depositshield.retako.com';
+    }
+    
+    photo.url = `/uploads/${photo.file_path}`;  // Sadece path döndürürken frontend tarafında baseUrl ile birleştirilecek
     
     res.json(photo);
   } catch (error) {
@@ -225,9 +353,18 @@ exports.updatePhotoNote = async (req, res) => {
     // Güncellenmiş fotoğraf bilgilerini getir
     const updatedPhoto = await Photo.findById(photoId);
     
-    // Fotoğraf URL'i oluştur
-    const baseUrl = `${req.protocol}://${req.get('host')}`;
-    updatedPhoto.url = `${baseUrl}/uploads/${updatedPhoto.file_path}`;
+    // Fotoğraf URL'i oluştur - daha güvenilir bir yöntem kullanalım
+    // Önce istek protokolü ve host bilgisini kontrol edelim
+    let protocol = req.headers['x-forwarded-proto'] || req.protocol || 'http';
+    let host = req.headers['x-forwarded-host'] || req.get('host') || 'localhost:5050';
+    
+    // Canlı ortamda sabit değerleri kullanmayı tercih edebiliriz
+    if (process.env.NODE_ENV === 'production') {
+      protocol = 'https';
+      host = 'api.depositshield.retako.com';
+    }
+    
+    updatedPhoto.url = `/uploads/${updatedPhoto.file_path}`;  // Sadece path döndürürken frontend tarafında baseUrl ile birleştirilecek
     
     res.json({
       message: 'Fotoğraf notu başarıyla güncellendi',

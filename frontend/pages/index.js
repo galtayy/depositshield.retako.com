@@ -22,51 +22,123 @@ export default function Home() {
 
   useEffect(() => {
     if (user) {
-      // In a real app, you would fetch this data from the API
+      // Kullanıcı girişi yapıldığında verileri yükle
       fetchDashboardData();
     }
   }, [user]);
 
   const fetchDashboardData = async () => {
     try {
-      // These would be actual API calls in a real app
-      // For now, we'll use mock data
+      console.log('Fetching dashboard data...');
       
-      // Fetch property count
-      const propertiesResponse = await apiService.properties.getAll();
-      const properties = propertiesResponse.data || [];
+      // doğrudan API URL'sini kullanarak veri çekelim
+      const axios = (await import('axios')).default;
+      const token = localStorage.getItem('token');
+      const headers = { 
+        'Content-Type': 'application/json',
+        'Accept': 'application/json'
+      };
       
-      // Fetch reports count
-      const reportsResponse = await apiService.reports.getAll();
-      const reports = reportsResponse.data || [];
+      if (token) {
+        headers.Authorization = `Bearer ${token}`;
+      }
       
+      // Environment Check
+      const isProduction = typeof window !== 'undefined' ? window.location.hostname !== 'localhost' : false;
+      const apiUrl = isProduction ? 'https://api.depositshield.retako.com' : 'http://localhost:5050';
+      console.log('Using API URL:', apiUrl);
+      
+      // Properties verisini çek
+      let properties = [];
+      try {
+        console.log('Fetching properties from', `${apiUrl}/api/properties`);
+        const propertiesResponse = await axios.get(`${apiUrl}/api/properties`, { headers });
+        properties = propertiesResponse.data || [];
+        console.log(`Loaded ${properties.length} properties`);
+      } catch (propError) {
+        console.error('Failed to load properties:', propError);
+        properties = [];
+      }
+      
+      // Reports verisini çek
+      let reports = [];
+      try {
+        console.log('Fetching reports from', `${apiUrl}/api/reports`);
+        const reportsResponse = await axios.get(`${apiUrl}/api/reports`, { headers });
+        reports = reportsResponse.data || [];
+        console.log(`Loaded ${reports.length} reports`);
+      } catch (reportError) {
+        console.error('Failed to load reports:', reportError);
+        reports = [];
+      }
+      
+      // İstatistikleri güncelle
       setStats({
         properties: properties.length,
         reports: reports.length
       });
       
-      // Create mock recent activity
-      const mockActivity = [
-        {
-          id: 1,
-          type: 'create_report',
-          title: 'Created new report',
-          description: reports.length > 0 ? `${reports[0].type}: ${reports[0].title}` : 'Pre-Move-In: Apartment 4B',
-          time: '2 hours ago',
-          icon: 'report'
-        },
-        {
-          id: 3,
-          type: 'add_property',
-          title: 'Added new property',
-          description: properties.length > 0 ? properties[0].address : '42 Ocean Drive',
-          time: '3 days ago',
-          icon: 'property'
+      // Aktiviteleri oluştur
+      try {
+        const activities = [];
+        
+        // Report activity
+        if (reports && reports.length > 0) {
+          // Sort by date (newest first)
+          reports.sort((a, b) => new Date(b.created_at || 0) - new Date(a.created_at || 0));
+          
+          // Add most recent report
+          activities.push({
+            id: `report-${reports[0].id || 1}`,
+            type: 'create_report',
+            title: 'Created new report',
+            description: reports[0].title ? 
+              `${reports[0].type || 'Report'}: ${reports[0].title}` : 
+              'Property Report',
+            time: '2 hours ago',
+            icon: 'report'
+          });
         }
-      ];
-      
-      setRecentActivity(mockActivity);
-      
+        
+        // Property activity
+        if (properties && properties.length > 0) {
+          // Add most recent property
+          activities.push({
+            id: `property-${properties[0].id || 2}`,
+            type: 'add_property',
+            title: 'Added new property',
+            description: properties[0].address || 'Property Address',
+            time: '3 days ago',
+            icon: 'property'
+          });
+        }
+        
+        // Fallback for empty activities
+        if (activities.length === 0) {
+          activities.push({
+            id: 'welcome-1',
+            type: 'system',
+            title: 'System Message',
+            description: 'Welcome to DepositShield',
+            time: 'Just now',
+            icon: 'report'
+          });
+        }
+        
+        setRecentActivity(activities);
+        console.log('Recent activities created:', activities.length);
+      } catch (activityError) {
+        console.error('Error creating activities:', activityError);
+        // Simple fallback
+        setRecentActivity([{
+          id: 'fallback-1',
+          type: 'system',
+          title: 'System Message',
+          description: 'Welcome to DepositShield',
+          time: 'Just now',
+          icon: 'report'
+        }]);
+      }
     } catch (error) {
       console.error('Error fetching dashboard data:', error);
     }

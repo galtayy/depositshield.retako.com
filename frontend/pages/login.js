@@ -4,6 +4,7 @@ import { useRouter } from 'next/router';
 import { toast } from 'react-toastify';
 import { useAuth } from '../lib/auth';
 import Head from 'next/head';
+import CookieBanner from '../components/CookieBanner';
 
 export default function Login() {
   const [email, setEmail] = useState('');
@@ -138,8 +139,22 @@ export default function Login() {
             </Link>
           </p>
         </div>
+        
+        <div className="mt-6 pt-4 border-t border-gray-200">
+          <p className="text-xs text-gray-500 text-center">
+            By signing in, you agree to our{' '}
+            <Link href="/terms" className="text-primary hover:text-primary/80">
+              Terms of Service
+            </Link>{' '}
+            and{' '}
+            <Link href="/privacy" className="text-primary hover:text-primary/80">
+              Privacy Policy
+            </Link>
+          </p>
+        </div>
       </div>
     </div>
+    <CookieBanner />
     </>
   );
 }

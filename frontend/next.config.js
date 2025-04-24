@@ -8,13 +8,13 @@ const withPWA = require('next-pwa')({
 module.exports = withPWA({
   reactStrictMode: true,
   images: {
-    domains: ['localhost', 'apidepositshield.retako.com'],
+    domains: ['localhost', 'api.depositshield.retako.com'],
   },
   async rewrites() {
     return [
       {
         source: '/api/:path*',
-        destination: 'https://apidepositshield.retako.com/api/:path*', // API URL'yi canlı ortama göre ayarla
+        destination: 'https://api.depositshield.retako.com/api/:path*', // Düzeltilmiş API URL
       },
     ]
   },
