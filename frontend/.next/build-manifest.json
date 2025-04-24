@@ -27,25 +27,20 @@
       "static/chunks/main.js",
       "static/chunks/pages/_error.js"
     ],
+    "/reports": [
+      "static/chunks/webpack.js",
+      "static/chunks/main.js",
+      "static/chunks/pages/reports.js"
+    ],
     "/reports/[id]": [
       "static/chunks/webpack.js",
       "static/chunks/main.js",
       "static/chunks/pages/reports/[id].js"
     ],
-    "/reports/new": [
+    "/reports/edit": [
       "static/chunks/webpack.js",
       "static/chunks/main.js",
-      "static/chunks/pages/reports/new.js"
-    ],
-    "/reports/shared": [
-      "static/chunks/webpack.js",
-      "static/chunks/main.js",
-      "static/chunks/pages/reports/shared.js"
-    ],
-    "/reports/shared/[uuid]": [
-      "static/chunks/webpack.js",
-      "static/chunks/main.js",
-      "static/chunks/pages/reports/shared/[uuid].js"
+      "static/chunks/pages/reports/edit.js"
     ]
   },
   "ampFirstPages": []

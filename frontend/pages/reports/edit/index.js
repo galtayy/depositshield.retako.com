@@ -287,7 +287,7 @@ export default function EditReport() {
     e.preventDefault();
     
     if (!title || !reportType) {
-      toast.error('Lütfen gerekli alanları doldurunuz.');
+      toast.error('Please fill in all required fields.');
       return;
     }
     
@@ -351,18 +351,18 @@ export default function EditReport() {
       
       // Eğer rapor daha önce reddedilmişse ek bilgi mesajı göster
       if (wasRejected) {
-        toast.success('Reddedilen rapor başarıyla güncellendi ve tekrar onaya sunulabilir.');
+        toast.success('The rejected report has been successfully updated and can be shared again.');
       } else {
-        toast.success('Rapor başarıyla güncellendi.');
+        toast.success('Report updated successfully.');
       }
       
       router.push(`/reports/${id}`);
     } catch (error) {
       console.error('Report update error:', error);
-      let errorMessage = 'Rapor güncellenirken bir hata oluştu.';
+      let errorMessage = 'An error occurred while updating the report.';
       
       if (error.response) {
-        console.error('API yanıt hatası:', error.response.data);
+        console.error('API response error:', error.response.data);
         errorMessage = error.response.data.message || errorMessage;
       }
       
@@ -376,7 +376,7 @@ export default function EditReport() {
     return (
       <Layout>
         <div className="container mx-auto px-4 py-8">
-          <h1 className="text-2xl font-bold mb-6">Rapor Düzenle</h1>
+          <h1 className="text-2xl font-bold mb-6">Edit Report</h1>
           <div className="flex justify-center items-center py-12">
             <div className="animate-spin rounded-full h-12 w-12 border-t-2 border-b-2 border-primary"></div>
           </div>
@@ -389,8 +389,8 @@ export default function EditReport() {
     <Layout>
       <div className="container mx-auto px-4 py-8 max-w-3xl animate-fadeIn">
         <div className="text-center mb-8">
-          <h1 className="text-3xl font-bold text-indigo-700 mb-2">Rapor Düzenle</h1>
-          <p className="text-gray-600">Mülkünüzün durumunu belgeleyin</p>
+          <h1 className="text-3xl font-bold text-indigo-700 mb-2">Edit Report</h1>
+          <p className="text-gray-600">Document the condition of your property</p>
         </div>
         
         <div className="bg-white rounded-xl shadow-lg overflow-hidden border border-gray-100">
@@ -400,8 +400,8 @@ export default function EditReport() {
               <div className="bg-indigo-600 h-2.5 rounded-full" style={{ width: step === 1 ? '33%' : step === 2 ? '66%' : '100%' }}></div>
             </div>
             <div className="flex justify-between mt-2 text-xs text-gray-500">
-              <span className="font-medium text-indigo-700">Adım {step} / 3</span>
-              <span>{step === 1 ? 'Temel Bilgiler' : step === 2 ? 'Fotoğraflar' : 'Onay'}</span>
+              <span className="font-medium text-indigo-700">Step {step} / 3</span>
+              <span>{step === 1 ? 'Basic Information' : step === 2 ? 'Photos' : 'Review'}</span>
             </div>
           </div>
           
@@ -411,7 +411,7 @@ export default function EditReport() {
                 <div className="space-y-6">
                   <div>
                     <label htmlFor="property" className="block text-sm font-medium text-gray-700 mb-2">
-                      Mülk Adresi*
+                      Property Address*
                     </label>
                     <input
                       id="property"
@@ -424,7 +424,7 @@ export default function EditReport() {
                   
                   <div>
                     <label htmlFor="title" className="block text-sm font-medium text-gray-700 mb-2">
-                      Rapor Başlığı*
+                      Report Title*
                     </label>
                     <input
                       id="title"
@@ -432,14 +432,14 @@ export default function EditReport() {
                       value={title}
                       onChange={(e) => setTitle(e.target.value)}
                       className="input focus:border-indigo-500 transition-all duration-300"
-                      placeholder="Rapor için kısa bir başlık girin"
+                      placeholder="Enter a short title for the report"
                       required
                     />
                   </div>
                   
                   <div>
                     <label htmlFor="description" className="block text-sm font-medium text-gray-700 mb-2">
-                      Rapor Açıklaması
+                      Report Description
                     </label>
                     <textarea
                       id="description"
@@ -447,84 +447,84 @@ export default function EditReport() {
                       onChange={(e) => setDescription(e.target.value)}
                       rows={3}
                       className="input focus:border-indigo-500 transition-all duration-300"
-                      placeholder="Rapor hakkında genel açıklama (isteğe bağlı)"
+                      placeholder="General description about the report (optional)"
                     />
                   </div>
                   
                   <div>
                     <label className="block text-sm font-medium text-gray-700 mb-2">
-                      Rapor Türü*
+                      Report Type*
                     </label>
                     
                     <div className="grid grid-cols-1 md:grid-cols-3 gap-3">
                       <div className={`p-4 rounded-lg border cursor-pointer text-center transition-all duration-300 ${
-                        reportType === 'move-in' 
-                          ? 'border-green-500 bg-green-50 text-green-700'
-                          : 'border-gray-200 hover:border-indigo-200 hover:bg-indigo-50'
+                      reportType === 'move-in' 
+                      ? 'border-green-500 bg-green-50 text-green-700'
+                      : 'border-gray-200 hover:border-indigo-200 hover:bg-indigo-50'
                       }`}
                       onClick={() => setReportType('move-in')}>
-                        <input
-                          id="type-move-in"
-                          name="reportType"
-                          type="radio"
-                          value="move-in"
-                          checked={reportType === 'move-in'}
-                          onChange={() => setReportType('move-in')}
-                          className="hidden"
-                          required
-                        />
-                        <svg xmlns="http://www.w3.org/2000/svg" className="h-6 w-6 mx-auto mb-2 text-green-600" fill="none" viewBox="0 0 24 24" stroke="currentColor">
-                          <path strokeLinecap="round" strokeLinejoin="round" strokeWidth={2} d="M11 16l-4-4m0 0l4-4m-4 4h14m-5 4v1a3 3 0 01-3 3H6a3 3 0 01-3-3V7a3 3 0 013-3h7a3 3 0 013 3v1" />
-                        </svg>
-                        <label htmlFor="type-move-in" className="font-medium block">
-                          Taşınma Öncesi
-                        </label>
+                      <input
+                      id="type-move-in"
+                      name="reportType"
+                      type="radio"
+                      value="move-in"
+                      checked={reportType === 'move-in'}
+                      onChange={() => setReportType('move-in')}
+                      className="hidden"
+                      required
+                      />
+                      <svg xmlns="http://www.w3.org/2000/svg" className="h-6 w-6 mx-auto mb-2 text-green-600" fill="none" viewBox="0 0 24 24" stroke="currentColor">
+                      <path strokeLinecap="round" strokeLinejoin="round" strokeWidth={2} d="M11 16l-4-4m0 0l4-4m-4 4h14m-5 4v1a3 3 0 01-3 3H6a3 3 0 01-3-3V7a3 3 0 013-3h7a3 3 0 013 3v1" />
+                      </svg>
+                      <label htmlFor="type-move-in" className="font-medium block">
+                      Pre-Move-In
+                      </label>
                       </div>
                       
                       <div className={`p-4 rounded-lg border cursor-pointer text-center transition-all duration-300 ${
-                        reportType === 'move-out' 
-                          ? 'border-red-500 bg-red-50 text-red-700'
-                          : 'border-gray-200 hover:border-indigo-200 hover:bg-indigo-50'
+                      reportType === 'move-out' 
+                      ? 'border-red-500 bg-red-50 text-red-700'
+                      : 'border-gray-200 hover:border-indigo-200 hover:bg-indigo-50'
                       }`}
                       onClick={() => setReportType('move-out')}>
-                        <input
-                          id="type-move-out"
-                          name="reportType"
-                          type="radio"
-                          value="move-out"
-                          checked={reportType === 'move-out'}
-                          onChange={() => setReportType('move-out')}
-                          className="hidden"
-                        />
-                        <svg xmlns="http://www.w3.org/2000/svg" className="h-6 w-6 mx-auto mb-2 text-red-600" fill="none" viewBox="0 0 24 24" stroke="currentColor">
-                          <path strokeLinecap="round" strokeLinejoin="round" strokeWidth={2} d="M17 16l4-4m0 0l-4-4m4 4H7m6 4v1a3 3 0 01-3 3H6a3 3 0 01-3-3V7a3 3 0 013-3h4a3 3 0 013 3v1" />
-                        </svg>
-                        <label htmlFor="type-move-out" className="font-medium block">
-                          Taşınma Sonrası
-                        </label>
+                      <input
+                      id="type-move-out"
+                      name="reportType"
+                      type="radio"
+                      value="move-out"
+                      checked={reportType === 'move-out'}
+                      onChange={() => setReportType('move-out')}
+                      className="hidden"
+                      />
+                      <svg xmlns="http://www.w3.org/2000/svg" className="h-6 w-6 mx-auto mb-2 text-red-600" fill="none" viewBox="0 0 24 24" stroke="currentColor">
+                      <path strokeLinecap="round" strokeLinejoin="round" strokeWidth={2} d="M17 16l4-4m0 0l-4-4m4 4H7m6 4v1a3 3 0 01-3 3H6a3 3 0 01-3-3V7a3 3 0 013-3h4a3 3 0 013 3v1" />
+                      </svg>
+                      <label htmlFor="type-move-out" className="font-medium block">
+                      Post-Move-Out
+                      </label>
                       </div>
                       
                       <div className={`p-4 rounded-lg border cursor-pointer text-center transition-all duration-300 ${
-                        reportType === 'general' 
-                          ? 'border-blue-500 bg-blue-50 text-blue-700'
-                          : 'border-gray-200 hover:border-indigo-200 hover:bg-indigo-50'
+                      reportType === 'general' 
+                      ? 'border-blue-500 bg-blue-50 text-blue-700'
+                      : 'border-gray-200 hover:border-indigo-200 hover:bg-indigo-50'
                       }`}
                       onClick={() => setReportType('general')}>
-                        <input
-                          id="type-general"
-                          name="reportType"
-                          type="radio"
-                          value="general"
-                          checked={reportType === 'general'}
-                          onChange={() => setReportType('general')}
-                          className="hidden"
-                        />
-                        <svg xmlns="http://www.w3.org/2000/svg" className="h-6 w-6 mx-auto mb-2 text-blue-600" fill="none" viewBox="0 0 24 24" stroke="currentColor">
-                          <path strokeLinecap="round" strokeLinejoin="round" strokeWidth={2} d="M9 12h6m-6 4h6m2 5H7a2 2 0 01-2-2V5a2 2 0 012-2h5.586a1 1 0 01.707.293l5.414 5.414a1 1 0 01.293.707V19a2 2 0 01-2 2z" />
-                        </svg>
-                        <label htmlFor="type-general" className="font-medium block">
-                          Genel Gözlem
-                        </label>
+                      <input
+                      id="type-general"
+                      name="reportType"
+                      type="radio"
+                      value="general"
+                      checked={reportType === 'general'}
+                      onChange={() => setReportType('general')}
+                      className="hidden"
+                      />
+                      <svg xmlns="http://www.w3.org/2000/svg" className="h-6 w-6 mx-auto mb-2 text-blue-600" fill="none" viewBox="0 0 24 24" stroke="currentColor">
+                      <path strokeLinecap="round" strokeLinejoin="round" strokeWidth={2} d="M9 12h6m-6 4h6m2 5H7a2 2 0 01-2-2V5a2 2 0 012-2h5.586a1 1 0 01.707.293l5.414 5.414a1 1 0 01.293.707V19a2 2 0 01-2 2z" />
+                      </svg>
+                      <label htmlFor="type-general" className="font-medium block">
+                      General Observation
+                      </label>
                       </div>
                     </div>
                   </div>
@@ -536,7 +536,7 @@ export default function EditReport() {
                     onClick={() => router.back()}
                     className="btn btn-secondary hover:bg-gray-100 transition-all duration-300"
                   >
-                    İptal
+                    Cancel
                   </button>
                   
                   <button
@@ -545,20 +545,20 @@ export default function EditReport() {
                       if (title && reportType) {
                         setStep(2);
                       } else {
-                        toast.error('Lütfen gerekli alanları doldurunuz.');
+                        toast.error('Please fill in all required fields.');
                       }
                     }}
                     className="btn btn-primary hover:bg-indigo-500 transition-all duration-300"
                   >
-                    Devam
+                    Continue
                   </button>
                 </div>
               </div>
             ) : step === 2 ? (
               <div className="p-6 space-y-6">
                 <div>
-                  <h3 className="text-xl font-semibold text-gray-800 mb-4">Fotoğraf Yükle</h3>
-                  <p className="text-gray-600 mb-6">Mülkünüzün durumunu belgelemek için fotoğraf yükleyin</p>
+                  <h3 className="text-xl font-semibold text-gray-800 mb-4">Upload Photos</h3>
+                  <p className="text-gray-600 mb-6">Upload photos to document the condition of your property</p>
                   
                   <div className="flex flex-wrap gap-6 mb-6">
                     {previewPhotos.map((preview, index) => (
@@ -580,7 +580,7 @@ export default function EditReport() {
                         <div className="mt-3 w-32">
                           <input
                             type="text"
-                            placeholder="Not ekle"
+                            placeholder="Add a note"
                             value={photoNotes[index] || ''}
                             onChange={(e) => handleNoteChange(index, e.target.value)}
                             className="w-full text-xs p-2 border border-gray-300 rounded"
@@ -589,7 +589,7 @@ export default function EditReport() {
                           <div className="mt-2">
                             <input
                               type="text"
-                              placeholder="Etiket ekle ve Enter'a bas"
+                              placeholder="Add a tag and press Enter"
                               onKeyPress={(e) => handleKeyPress(e, index)}
                               className="w-full text-xs p-2 border border-gray-300 rounded"
                             />
@@ -710,7 +710,7 @@ export default function EditReport() {
                         <svg xmlns="http://www.w3.org/2000/svg" className="h-10 w-10 mx-auto text-gray-400" fill="none" viewBox="0 0 24 24" stroke="currentColor">
                           <path strokeLinecap="round" strokeLinejoin="round" strokeWidth={2} d="M12 6v6m0 0v6m0-6h6m-6 0H6" />
                         </svg>
-                        <span className="text-xs text-gray-500 mt-2 block">Fotoğraf Ekle</span>
+                        <span className="text-xs text-gray-500 mt-2 block">Add Photo</span>
                       </div>
                     </div>
                     
@@ -731,7 +731,7 @@ export default function EditReport() {
                     onClick={() => setStep(1)}
                     className="btn btn-secondary hover:bg-gray-100 transition-all duration-300"
                   >
-                    Geri
+                    Back
                   </button>
                   
                   <button
@@ -739,7 +739,7 @@ export default function EditReport() {
                     onClick={() => setStep(3)}
                     className="btn btn-primary hover:bg-indigo-500 transition-all duration-300"
                   >
-                    Devam
+                    Continue
                   </button>
                 </div>
               </div>
@@ -750,37 +750,37 @@ export default function EditReport() {
                     <path fillRule="evenodd" d="M10 18a8 8 0 100-16 8 8 0 000 16zm3.707-9.293a1 1 0 00-1.414-1.414L9 10.586 7.707 9.293a1 1 0 00-1.414 1.414l2 2a1 1 0 001.414 0l4-4z" clipRule="evenodd" />
                   </svg>
                   <div>
-                    <h3 className="font-medium text-green-800 text-sm">Kaydetmeye Hazır</h3>
-                    <p className="text-green-700 text-xs mt-1">Lütfen kaydetmeden önce rapor detaylarını gözden geçirin</p>
+                    <h3 className="font-medium text-green-800 text-sm">Ready to Save</h3>
+                    <p className="text-green-700 text-xs mt-1">Please review the report details before saving</p>
                   </div>
                 </div>
               
                 <div className="grid md:grid-cols-2 gap-6">
                   <div className="bg-gray-50 rounded-lg p-4">
-                    <h3 className="font-medium text-gray-700 mb-3">Rapor Bilgileri</h3>
+                    <h3 className="font-medium text-gray-700 mb-3">Report Information</h3>
                     
                     <div className="space-y-3">
                       <div>
-                        <span className="text-xs text-gray-500 block">Mülk:</span>
+                        <span className="text-xs text-gray-500 block">Property:</span>
                         <p className="text-sm">{address}</p>
                       </div>
                       
                       <div>
-                        <span className="text-xs text-gray-500 block">Rapor Başlığı:</span>
+                        <span className="text-xs text-gray-500 block">Report Title:</span>
                         <p className="text-sm">{title}</p>
                       </div>
                       
                       <div>
-                        <span className="text-xs text-gray-500 block">Rapor Türü:</span>
+                        <span className="text-xs text-gray-500 block">Report Type:</span>
                         <p className="text-sm">
-                          {reportType === 'move-in' ? 'Taşınma Öncesi' : 
-                           reportType === 'move-out' ? 'Taşınma Sonrası' : 'Genel Gözlem'}
+                          {reportType === 'move-in' ? 'Pre-Move-In' : 
+                           reportType === 'move-out' ? 'Post-Move-Out' : 'General Observation'}
                         </p>
                       </div>
                       
                       {description && (
                         <div>
-                          <span className="text-xs text-gray-500 block">Açıklama:</span>
+                          <span className="text-xs text-gray-500 block">Description:</span>
                           <p className="text-sm">{description}</p>
                         </div>
                       )}
@@ -788,7 +788,7 @@ export default function EditReport() {
                   </div>
                   
                   <div className="bg-gray-50 rounded-lg p-4">
-                    <h3 className="font-medium text-gray-700 mb-3">Fotoğraflar</h3>
+                    <h3 className="font-medium text-gray-700 mb-3">Photos</h3>
                     
                     {photos.length > 0 || existingPhotos.length > 0 ? (
                       <div className="flex flex-wrap gap-2">
@@ -796,7 +796,7 @@ export default function EditReport() {
                           <div key={index} className="relative">
                             <img 
                               src={preview} 
-                              alt={`Fotoğraf ${index + 1}`} 
+                              alt={`Photo ${index + 1}`} 
                               className="w-16 h-16 object-cover rounded border border-gray-200"
                             />
                           </div>
@@ -806,7 +806,7 @@ export default function EditReport() {
                           <div key={`thumb-${photo.id}`} className="relative">
                             <img 
                               src={photo.imgSrc || '/images/placeholder-image.svg'} 
-                              alt={photo.note || `Mevcut Fotoğraf ${index + 1}`}
+                              alt={photo.note || `Existing Photo ${index + 1}`}
                               className="w-16 h-16 object-cover rounded border border-gray-200"
                               crossOrigin="anonymous"
                               onError={(e) => { e.target.src = '/images/placeholder-image.svg'; }}
@@ -815,11 +815,11 @@ export default function EditReport() {
                         ))}
                         
                         <div className="text-xs text-gray-500 mt-2 w-full">
-                          {photos.length + existingPhotos.length} fotoğraf eklendi
+                          {photos.length + existingPhotos.length} photos added
                         </div>
                       </div>
                     ) : (
-                      <p className="text-sm text-gray-500">Henüz fotoğraf eklenmedi</p>
+                      <p className="text-sm text-gray-500">No photos added yet</p>
                     )}
                   </div>
                 </div>
@@ -830,7 +830,7 @@ export default function EditReport() {
                     onClick={() => setStep(2)}
                     className="btn btn-secondary hover:bg-gray-100 transition-all duration-300"
                   >
-                    Geri
+                    Back
                   </button>
                   
                   <button
@@ -844,9 +844,9 @@ export default function EditReport() {
                           <circle className="opacity-25" cx="12" cy="12" r="10" stroke="currentColor" strokeWidth="4"></circle>
                           <path className="opacity-75" fill="currentColor" d="M4 12a8 8 0 018-8V0C5.373 0 0 5.373 0 12h4zm2 5.291A7.962 7.962 0 014 12H0c0 3.042 1.135 5.824 3 7.938l3-2.647z"></path>
                         </svg>
-                        Kaydediliyor...
+                        Saving...
                       </span>
-                    ) : 'Raporu Güncelle'}
+                    ) : 'Update Report'}
                   </button>
                 </div>
               </div>

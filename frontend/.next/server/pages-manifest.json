@@ -2,9 +2,8 @@
   "/_app": "pages/_app.js",
   "/_error": "pages/_error.js",
   "/_document": "pages/_document.js",
-  "/reports/shared/[uuid]": "pages/reports/shared/[uuid].js",
+  "/reports/[id]": "pages/reports/[id].js",
   "/": "pages/index.js",
-  "/reports/new": "pages/reports/new.js",
-  "/reports/shared": "pages/reports/shared.js",
-  "/reports/[id]": "pages/reports/[id].js"
+  "/reports": "pages/reports.js",
+  "/reports/edit": "pages/reports/edit.js"
 }
