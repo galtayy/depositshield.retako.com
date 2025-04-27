@@ -1,1 +1,0 @@
-self.__REACT_LOADABLE_MANIFEST="{\"pages/reports/[id]/index.js -> axios\":{\"id\":\"pages/reports/[id]/index.js -> axios\",\"files\":[]},\"pages/reports/shared/[uuid]/index.js -> axios\":{\"id\":\"pages/reports/shared/[uuid]/index.js -> axios\",\"files\":[]}}"
