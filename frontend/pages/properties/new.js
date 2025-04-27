@@ -1,4 +1,4 @@
-import { useState } from 'react';
+import { useState, useEffect } from 'react';
 import { useRouter } from 'next/router';
 import { toast } from 'react-toastify';
 import Layout from '../../components/Layout';
@@ -12,15 +12,53 @@ export default function NewProperty() {
   const [bedrooms, setBedrooms] = useState('');
   const [bathrooms, setBathrooms] = useState('');
   const [livingRooms, setLivingRooms] = useState('');
+  const [kitchenCount, setKitchenCount] = useState('');
   const [squareFootage, setSquareFootage] = useState('');
   const [yearBuilt, setYearBuilt] = useState('');
   const [parkingSpaces, setParkingSpaces] = useState('');
+  const [depositAmount, setDepositAmount] = useState('');
+  const [contractStartDate, setContractStartDate] = useState('');
+  const [contractEndDate, setContractEndDate] = useState('');
+  const [additionalSpaces, setAdditionalSpaces] = useState({
+    balcony: false,
+    patio: false,
+    garden: false,
+    garage: false,
+    basement: false,
+    attic: false,
+    terrace: false,
+    pool: false
+  });
   const [isSubmitting, setIsSubmitting] = useState(false);
   const [step, setStep] = useState(1);
+  const [allowSubmit, setAllowSubmit] = useState(false);
   const router = useRouter();
 
+  // Prevent automatic submission
+  useEffect(() => {
+    // Only allow form submission when save button is pressed
+    const handleBeforeUnload = (e) => {
+      if (step === 3 && !allowSubmit) {
+        e.preventDefault();
+        e.returnValue = '';
+      }
+    };
+
+    window.addEventListener('beforeunload', handleBeforeUnload);
+    return () => {
+      window.removeEventListener('beforeunload', handleBeforeUnload);
+    };
+  }, [step, allowSubmit]);
+
   const handleSubmit = async (e) => {
+    console.log('Form submission requested');
     e.preventDefault();
+
+    // If form is submitted automatically without clicking the save button
+    if (!allowSubmit) {
+      console.log('Blocking automatic submission');
+      return;
+    }
     
     if (!address || !description || !propertyType) {
       toast.error('Please fill in all required fields.');
@@ -30,22 +68,32 @@ export default function NewProperty() {
     setIsSubmitting(true);
     
     try {
-      // Backend, property_details alanını işlemiyor gibi görünüyor, sadece gerekli alanları gönderelim
+      // Tüm gerekli alanları içeren property verilerini hazırla
       const propertyData = {
         address,
         description,
-        role_at_this_property: 'other' // Backend sadece 'landlord', 'renter', 'other' değerlerini kabul ediyor
+        role_at_this_property: 'other', // Backend sadece 'landlord', 'renter', 'other' değerlerini kabul ediyor
+        deposit_amount: depositAmount,
+        contract_start_date: contractStartDate,
+        contract_end_date: contractEndDate,
+        kitchen_count: kitchenCount,
+        additional_spaces: JSON.stringify(additionalSpaces)
       };
       
       // Detaylı bilgileri konsolda görelim (debugging amaçlı)
-      console.log('Property details not sent to backend but collected:', {
+      console.log('Property details sent to backend:', {
         property_type: propertyType,
         bedrooms: bedrooms || null,
         bathrooms: bathrooms || null,
         living_rooms: livingRooms || null,
+        kitchen_count: kitchenCount || null,
         square_footage: squareFootage || null,
         year_built: yearBuilt || null,
-        parking_spaces: parkingSpaces || null
+        parking_spaces: parkingSpaces || null,
+        deposit_amount: depositAmount || null,
+        contract_start_date: contractStartDate || null,
+        contract_end_date: contractEndDate || null,
+        additional_spaces: additionalSpaces
       });
       
       console.log('Sending property creation request:', propertyData);
@@ -58,17 +106,21 @@ export default function NewProperty() {
       toast.success('Property added successfully!');
       console.log('Successfully created property with ID:', response.data.id);
       
-      // Property detaylarını localStorage'a kaydet (backend bu verileri kaydetmiyor)
-      // Not: Gerçek bir uygulamada bu veriler backend'de saklanmalıdır
+      // Property detaylarını localStorage'a da kaydet
       try {
         const propertyDetails = {
           property_type: propertyType,
           bedrooms: bedrooms || '',
           bathrooms: bathrooms || '',
           living_rooms: livingRooms || '',
+          kitchen_count: kitchenCount || '',
           square_footage: squareFootage || '',
           year_built: yearBuilt || '',
-          parking_spaces: parkingSpaces || ''
+          parking_spaces: parkingSpaces || '',
+          deposit_amount: depositAmount || '',
+          contract_start_date: contractStartDate || '',
+          contract_end_date: contractEndDate || '',
+          additional_spaces: additionalSpaces
         };
         
         const existingDetailsStr = localStorage.getItem('propertyDetails');
@@ -99,6 +151,7 @@ export default function NewProperty() {
       toast.error(errorMessage);
     } finally {
       setIsSubmitting(false);
+      setAllowSubmit(false);
     }
   };
 
@@ -122,7 +175,7 @@ export default function NewProperty() {
             </div>
           </div>
           
-          <form onSubmit={step === 3 ? handleSubmit : (e) => e.preventDefault()}>
+          <form onSubmit={handleSubmit}>
             {step === 1 ? (
               <div className="p-6 space-y-6">
                 <div className="grid md:grid-cols-2 gap-6">
@@ -273,6 +326,25 @@ export default function NewProperty() {
                   </div>
                   
                   <div className="col-span-1">
+                    <label htmlFor="kitchenCount" className="block text-sm font-medium text-gray-700 mb-2">
+                      Kitchen
+                    </label>
+                    <select
+                      id="kitchenCount"
+                      value={kitchenCount}
+                      onChange={(e) => setKitchenCount(e.target.value)}
+                      className="input focus:border-indigo-500 transition-all duration-300"
+                    >
+                      <option value="">Select</option>
+                      <option value="0">0</option>
+                      <option value="1">1</option>
+                      <option value="2">2</option>
+                      <option value="3">3</option>
+                      <option value="4+">4+</option>
+                    </select>
+                  </div>
+                  
+                  <div className="col-span-1">
                     <label htmlFor="squareFootage" className="block text-sm font-medium text-gray-700 mb-2">
                       Square Footage
                     </label>
@@ -319,9 +391,140 @@ export default function NewProperty() {
                       <option value="4+">4+</option>
                     </select>
                   </div>
+                  
+                  <div className="col-span-1">
+                    <label htmlFor="depositAmount" className="block text-sm font-medium text-gray-700 mb-2">
+                      Deposit Amount
+                    </label>
+                    <div className="relative">
+                      <div className="absolute inset-y-0 left-0 pl-3 flex items-center pointer-events-none">
+                        <span className="text-gray-500 text-sm ml-1">$</span>
+                      </div>
+                      <input
+                        id="depositAmount"
+                        type="number"
+                        value={depositAmount}
+                        onChange={(e) => setDepositAmount(e.target.value)}
+                        className="input pl-12 focus:border-indigo-500 transition-all duration-300"
+                        placeholder="0.00"
+                      />
+                    </div>
+                  </div>
+
+                  <div className="col-span-1">
+                    <label htmlFor="contractStartDate" className="block text-sm font-medium text-gray-700 mb-2">
+                      Contract Start Date
+                    </label>
+                    <input
+                      id="contractStartDate"
+                      type="date"
+                      value={contractStartDate}
+                      onChange={(e) => setContractStartDate(e.target.value)}
+                      className="input focus:border-indigo-500 transition-all duration-300"
+                    />
+                  </div>
+                  
+                  <div className="col-span-1">
+                    <label htmlFor="contractEndDate" className="block text-sm font-medium text-gray-700 mb-2">
+                      Contract End Date
+                    </label>
+                    <input
+                      id="contractEndDate"
+                      type="date"
+                      value={contractEndDate}
+                      onChange={(e) => setContractEndDate(e.target.value)}
+                      className="input focus:border-indigo-500 transition-all duration-300"
+                    />
+                  </div>
                 </div>
                 
-
+                <div className="mt-6">
+                  <label className="block text-sm font-medium text-gray-700 mb-3">
+                    Additional Spaces
+                  </label>
+                  <div className="grid grid-cols-2 md:grid-cols-4 gap-3">
+                    <div className="flex items-center">
+                      <input
+                        id="balcony"
+                        type="checkbox"
+                        checked={additionalSpaces.balcony}
+                        onChange={(e) => setAdditionalSpaces({...additionalSpaces, balcony: e.target.checked})}
+                        className="h-4 w-4 text-indigo-600 focus:ring-indigo-500 border-gray-300 rounded"
+                      />
+                      <label htmlFor="balcony" className="ml-2 text-sm text-gray-700">Balcony</label>
+                    </div>
+                    <div className="flex items-center">
+                      <input
+                        id="patio"
+                        type="checkbox"
+                        checked={additionalSpaces.patio}
+                        onChange={(e) => setAdditionalSpaces({...additionalSpaces, patio: e.target.checked})}
+                        className="h-4 w-4 text-indigo-600 focus:ring-indigo-500 border-gray-300 rounded"
+                      />
+                      <label htmlFor="patio" className="ml-2 text-sm text-gray-700">Patio</label>
+                    </div>
+                    <div className="flex items-center">
+                      <input
+                        id="garden"
+                        type="checkbox"
+                        checked={additionalSpaces.garden}
+                        onChange={(e) => setAdditionalSpaces({...additionalSpaces, garden: e.target.checked})}
+                        className="h-4 w-4 text-indigo-600 focus:ring-indigo-500 border-gray-300 rounded"
+                      />
+                      <label htmlFor="garden" className="ml-2 text-sm text-gray-700">Garden</label>
+                    </div>
+                    <div className="flex items-center">
+                      <input
+                        id="garage"
+                        type="checkbox"
+                        checked={additionalSpaces.garage}
+                        onChange={(e) => setAdditionalSpaces({...additionalSpaces, garage: e.target.checked})}
+                        className="h-4 w-4 text-indigo-600 focus:ring-indigo-500 border-gray-300 rounded"
+                      />
+                      <label htmlFor="garage" className="ml-2 text-sm text-gray-700">Garage</label>
+                    </div>
+                    <div className="flex items-center">
+                      <input
+                        id="basement"
+                        type="checkbox"
+                        checked={additionalSpaces.basement}
+                        onChange={(e) => setAdditionalSpaces({...additionalSpaces, basement: e.target.checked})}
+                        className="h-4 w-4 text-indigo-600 focus:ring-indigo-500 border-gray-300 rounded"
+                      />
+                      <label htmlFor="basement" className="ml-2 text-sm text-gray-700">Basement</label>
+                    </div>
+                    <div className="flex items-center">
+                      <input
+                        id="attic"
+                        type="checkbox"
+                        checked={additionalSpaces.attic}
+                        onChange={(e) => setAdditionalSpaces({...additionalSpaces, attic: e.target.checked})}
+                        className="h-4 w-4 text-indigo-600 focus:ring-indigo-500 border-gray-300 rounded"
+                      />
+                      <label htmlFor="attic" className="ml-2 text-sm text-gray-700">Attic</label>
+                    </div>
+                    <div className="flex items-center">
+                      <input
+                        id="terrace"
+                        type="checkbox"
+                        checked={additionalSpaces.terrace}
+                        onChange={(e) => setAdditionalSpaces({...additionalSpaces, terrace: e.target.checked})}
+                        className="h-4 w-4 text-indigo-600 focus:ring-indigo-500 border-gray-300 rounded"
+                      />
+                      <label htmlFor="terrace" className="ml-2 text-sm text-gray-700">Terrace</label>
+                    </div>
+                    <div className="flex items-center">
+                      <input
+                        id="pool"
+                        type="checkbox"
+                        checked={additionalSpaces.pool}
+                        onChange={(e) => setAdditionalSpaces({...additionalSpaces, pool: e.target.checked})}
+                        className="h-4 w-4 text-indigo-600 focus:ring-indigo-500 border-gray-300 rounded"
+                      />
+                      <label htmlFor="pool" className="ml-2 text-sm text-gray-700">Pool</label>
+                    </div>
+                  </div>
+                </div>
                 
                 <div className="pt-4 flex justify-between items-center border-t border-gray-100 mt-6">
                   <button
@@ -395,6 +598,11 @@ export default function NewProperty() {
                       </div>
                       
                       <div>
+                        <span className="text-xs text-gray-500">Kitchen:</span>
+                        <p className="text-sm">{kitchenCount || 'Not specified'}</p>
+                      </div>
+                      
+                      <div>
                         <span className="text-xs text-gray-500">Square Footage:</span>
                         <p className="text-sm">{squareFootage ? `${squareFootage} sq ft` : 'Not specified'}</p>
                       </div>
@@ -408,9 +616,27 @@ export default function NewProperty() {
                         <span className="text-xs text-gray-500">Parking Spaces:</span>
                         <p className="text-sm">{parkingSpaces || 'Not specified'}</p>
                       </div>
+                      
+                      <div>
+                        <span className="text-xs text-gray-500">Deposit Amount:</span>
+                        <p className="text-sm">{depositAmount ? `$${depositAmount}` : 'Not specified'}</p>
+                      </div>
+                      
+                      <div>
+                        <span className="text-xs text-gray-500">Contract Dates:</span>
+                        <p className="text-sm">{contractStartDate && contractEndDate ? `${contractStartDate} to ${contractEndDate}` : 'Not specified'}</p>
+                      </div>
                     </div>
                     
-
+                    <div className="mt-3">
+                      <span className="text-xs text-gray-500">Additional Spaces:</span>
+                      <div className="grid grid-cols-2 gap-1 mt-1">
+                        {Object.entries(additionalSpaces).filter(([_, value]) => value).map(([key]) => (
+                          <p key={key} className="text-sm capitalize">{key}</p>
+                        ))}
+                        {Object.values(additionalSpaces).every(v => !v) && <p className="text-sm">None selected</p>}
+                      </div>
+                    </div>
                   </div>
                 </div>
               
@@ -427,6 +653,7 @@ export default function NewProperty() {
                     type="submit"
                     className="btn btn-primary hover:bg-indigo-500 transition-all duration-300"
                     disabled={isSubmitting}
+                    onClick={() => setAllowSubmit(true)}
                   >
                     {isSubmitting ? (
                       <span className="flex items-center">

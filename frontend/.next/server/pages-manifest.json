@@ -2,8 +2,8 @@
   "/_app": "pages/_app.js",
   "/_error": "pages/_error.js",
   "/_document": "pages/_document.js",
-  "/reports/[id]": "pages/reports/[id].js",
+  "/properties/new": "pages/properties/new.js",
   "/": "pages/index.js",
-  "/reports": "pages/reports.js",
-  "/reports/edit": "pages/reports/edit.js"
+  "/properties": "pages/properties.js",
+  "/properties/[id]": "pages/properties/[id].js"
 }

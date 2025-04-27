@@ -24,20 +24,20 @@ self.__BUILD_MANIFEST = {
       "static/chunks/main.js",
       "static/chunks/pages/_error.js"
     ],
-    "/reports": [
+    "/properties": [
       "static/chunks/webpack.js",
       "static/chunks/main.js",
-      "static/chunks/pages/reports.js"
+      "static/chunks/pages/properties.js"
     ],
-    "/reports/[id]": [
+    "/properties/[id]": [
       "static/chunks/webpack.js",
       "static/chunks/main.js",
-      "static/chunks/pages/reports/[id].js"
+      "static/chunks/pages/properties/[id].js"
     ],
-    "/reports/edit": [
+    "/properties/new": [
       "static/chunks/webpack.js",
       "static/chunks/main.js",
-      "static/chunks/pages/reports/edit.js"
+      "static/chunks/pages/properties/new.js"
     ]
   },
   "ampFirstPages": []

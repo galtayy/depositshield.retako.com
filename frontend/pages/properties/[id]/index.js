@@ -84,9 +84,14 @@ export default function PropertyDetail() {
                 bedrooms: '',
                 bathrooms: '',
                 living_rooms: '',
+                kitchen_count: '',
                 square_footage: '',
                 year_built: '',
-                parking_spaces: ''
+                parking_spaces: '',
+                deposit_amount: '',
+                contract_start_date: '',
+                contract_end_date: '',
+                additional_spaces: {}
               };
             }
           } else {
@@ -96,9 +101,14 @@ export default function PropertyDetail() {
               bedrooms: '',
               bathrooms: '',
               living_rooms: '',
+              kitchen_count: '',
               square_footage: '',
               year_built: '',
-              parking_spaces: ''
+              parking_spaces: '',
+              deposit_amount: '',
+              contract_start_date: '',
+              contract_end_date: '',
+              additional_spaces: {}
             };
           }
         } catch (error) {
@@ -108,9 +118,14 @@ export default function PropertyDetail() {
             bedrooms: '',
             bathrooms: '',
             living_rooms: '',
+            kitchen_count: '',
             square_footage: '',
             year_built: '',
-            parking_spaces: ''
+            parking_spaces: '',
+            deposit_amount: '',
+            contract_start_date: '',
+            contract_end_date: '',
+            additional_spaces: {}
           };
         }
       }
@@ -320,6 +335,13 @@ export default function PropertyDetail() {
                     </div>
                   )}
                   
+                  {property.property_details?.kitchen_count && (
+                    <div>
+                      <span className="text-xs text-gray-500 block">Kitchen:</span>
+                      <span className="text-sm text-gray-800">{property.property_details.kitchen_count}</span>
+                    </div>
+                  )}
+                  
                   {property.property_details?.square_footage && (
                     <div>
                       <span className="text-xs text-gray-500 block">Square Footage:</span>
@@ -340,16 +362,50 @@ export default function PropertyDetail() {
                       <span className="text-sm text-gray-800">{property.property_details.parking_spaces}</span>
                     </div>
                   )}
+                  
+                  {property.property_details?.deposit_amount && (
+                    <div>
+                      <span className="text-xs text-gray-500 block">Deposit Amount:</span>
+                      <span className="text-sm text-gray-800">${property.property_details.deposit_amount}</span>
+                    </div>
+                  )}
+                  
+                  {property.property_details?.contract_start_date && property.property_details?.contract_end_date && (
+                    <div>
+                      <span className="text-xs text-gray-500 block">Contract Dates:</span>
+                      <span className="text-sm text-gray-800">{property.property_details.contract_start_date} to {property.property_details.contract_end_date}</span>
+                    </div>
+                  )}
                 </div>
+                
+                {property.property_details?.additional_spaces && typeof property.property_details.additional_spaces === 'object' && Object.values(property.property_details.additional_spaces).some(v => v) && (
+                  <div className="mt-4">
+                    <span className="text-xs text-gray-500 block mb-1">Additional Spaces:</span>
+                    <div className="flex flex-wrap gap-2">
+                      {Object.entries(property.property_details.additional_spaces)
+                        .filter(([_, value]) => value)
+                        .map(([key]) => (
+                          <span key={key} className="text-xs bg-gray-100 text-gray-700 px-2 py-1 rounded-full capitalize">{key}</span>
+                        ))}
+                    </div>
+                  </div>
+                )}
                 
                 {(!property.property_details || 
                   (!property.property_details.property_type &&
                    !property.property_details.bedrooms &&
                    !property.property_details.bathrooms &&
                    !property.property_details.living_rooms &&
+                   !property.property_details.kitchen_count &&
                    !property.property_details.square_footage &&
                    !property.property_details.year_built &&
-                   !property.property_details.parking_spaces)) && (
+                   !property.property_details.parking_spaces &&
+                   !property.property_details.deposit_amount &&
+                   !property.property_details.contract_start_date &&
+                   (!property.property_details.additional_spaces || 
+                     Object.keys(property.property_details.additional_spaces).length === 0 || 
+                     Object.values(property.property_details.additional_spaces).every(v => !v))
+                  )) && (
                   <p className="text-sm text-gray-500 italic">No detailed information available. Update property details by clicking Edit Property button.</p>
                 )}
               </div>

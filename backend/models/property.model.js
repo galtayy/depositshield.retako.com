@@ -7,6 +7,11 @@ class Property {
     this.address = property.address;
     this.description = property.description;
     this.role_at_this_property = property.role_at_this_property;
+    this.deposit_amount = property.deposit_amount;
+    this.contract_start_date = property.contract_start_date;
+    this.contract_end_date = property.contract_end_date;
+    this.kitchen_count = property.kitchen_count;
+    this.additional_spaces = property.additional_spaces;
     this.created_at = property.created_at;
     this.updated_at = property.updated_at;
   }
@@ -16,8 +21,8 @@ class Property {
     try {
       const query = `
         INSERT INTO properties 
-        (user_id, address, description, role_at_this_property) 
-        VALUES (?, ?, ?, ?)
+        (user_id, address, description, role_at_this_property, deposit_amount, contract_start_date, contract_end_date, kitchen_count, additional_spaces) 
+        VALUES (?, ?, ?, ?, ?, ?, ?, ?, ?)
       `;
 
       const [result] = await db.execute(query, [
@@ -25,6 +30,11 @@ class Property {
         newProperty.address,
         newProperty.description,
         newProperty.role_at_this_property,
+        newProperty.deposit_amount || null,
+        newProperty.contract_start_date || null,
+        newProperty.contract_end_date || null,
+        newProperty.kitchen_count || null,
+        newProperty.additional_spaces || null,
       ]);
 
       return result.insertId;
@@ -61,7 +71,7 @@ class Property {
     try {
       const query = `
         UPDATE properties 
-        SET address = ?, description = ?, role_at_this_property = ?, updated_at = CURRENT_TIMESTAMP 
+        SET address = ?, description = ?, role_at_this_property = ?, deposit_amount = ?, contract_start_date = ?, contract_end_date = ?, kitchen_count = ?, additional_spaces = ?, updated_at = CURRENT_TIMESTAMP 
         WHERE id = ?
       `;
 
@@ -69,6 +79,11 @@ class Property {
         propertyData.address,
         propertyData.description,
         propertyData.role_at_this_property,
+        propertyData.deposit_amount || null,
+        propertyData.contract_start_date || null,
+        propertyData.contract_end_date || null,
+        propertyData.kitchen_count || null,
+        propertyData.additional_spaces || null,
         id
       ]);
 
