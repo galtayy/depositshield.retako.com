@@ -394,18 +394,15 @@ export default function NewProperty() {
                   
                   <div className="col-span-1">
                     <label htmlFor="depositAmount" className="block text-sm font-medium text-gray-700 mb-2">
-                      Deposit Amount
+                      Deposit Amount ($)
                     </label>
-                    <div className="relative">
-                      <div className="absolute inset-y-0 left-0 pl-3 flex items-center pointer-events-none">
-                        <span className="text-gray-500 text-sm ml-1">$</span>
-                      </div>
+                    <div className="relative mt-1 rounded-md shadow-sm">
                       <input
                         id="depositAmount"
                         type="number"
                         value={depositAmount}
                         onChange={(e) => setDepositAmount(e.target.value)}
-                        className="input pl-12 focus:border-indigo-500 transition-all duration-300"
+                        className="input focus:border-indigo-500 transition-all duration-300"
                         placeholder="0.00"
                       />
                     </div>

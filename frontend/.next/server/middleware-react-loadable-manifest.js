@@ -1,1 +1,1 @@
-self.__REACT_LOADABLE_MANIFEST="{\"pages/index.js -> axios\":{\"id\":\"pages/index.js -> axios\",\"files\":[]},\"pages/properties/[id]/index.js -> axios\":{\"id\":\"pages/properties/[id]/index.js -> axios\",\"files\":[]}}"
+self.__REACT_LOADABLE_MANIFEST="{\"pages/index.js -> axios\":{\"id\":\"pages/index.js -> axios\",\"files\":[]}}"

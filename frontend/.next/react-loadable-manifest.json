@@ -2,9 +2,5 @@
   "pages/index.js -> axios": {
     "id": "pages/index.js -> axios",
     "files": []
-  },
-  "pages/properties/[id]/index.js -> axios": {
-    "id": "pages/properties/[id]/index.js -> axios",
-    "files": []
   }
 }
