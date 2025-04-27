@@ -15,33 +15,30 @@ export default function NewReport() {
   const [step, setStep] = useState(1);
   
   // For photo uploads
-  const [photos, setPhotos] = useState([]);
-  const [previewPhotos, setPreviewPhotos] = useState([]);
+  const [photos, setPhotos] = useState({});
+  const [previewPhotos, setPreviewPhotos] = useState({});
   const [photoNotes, setPhotoNotes] = useState({});
   const [tags, setTags] = useState({});
-  const fileInputRef = useRef(null);
+  const fileInputRefs = useRef({});
+  const [propertyRooms, setPropertyRooms] = useState(null);
+  const [selectedRoomType, setSelectedRoomType] = useState('');
   
   const router = useRouter();
 
-  // Fetch properties
+  // Fetch properties and handle query parameters
   useEffect(() => {
     const fetchProperties = async () => {
       try {
-        // Bu token kontrolünü kaldırıyoruz çünkü sorun oluşturuyor
-        // useAuth hook zaten oturum kontrolünü yapıyor
-        /* 
-        try {
-          await apiService.auth.checkToken();
-        } catch (tokenError) {
-          console.error('Token check failed:', tokenError);
-          toast.error('Please log in to create a report.');
-          router.push('/login');
-          return;
-        }
-        */
-        
+        console.log('Fetching all properties');
         const response = await apiService.properties.getAll();
         setProperties(response.data);
+        
+        // Check if there's a propertyId query parameter and set it as selected property
+        if (router.query.propertyId) {
+          console.log('Found propertyId in query params:', router.query.propertyId);
+          setSelectedProperty(router.query.propertyId);
+        }
+        
         setLoadingProperties(false);
       } catch (error) {
         console.error('Properties fetch error:', error);
@@ -50,43 +47,217 @@ export default function NewReport() {
       }
     };
 
-    fetchProperties();
-  }, [router]);
+    if (router.isReady) {
+      fetchProperties();
+    }
+  }, [router.isReady, router.query]);
 
+  // Get property details when property is selected
+  useEffect(() => {
+    if (!selectedProperty) return;
+    console.log('Selected property ID:', selectedProperty);
+    
+    const fetchPropertyDetails = async () => {
+      try {
+        console.log('Fetching property details for ID:', selectedProperty);
+        const response = await apiService.properties.getById(selectedProperty);
+        console.log('Property API Response:', response.data);
+        let propertyData = response.data;
+        
+        // Try to get property details from localStorage if not available from API
+        let propertyDetails = null;
+        
+        // Check if API returned property_details or bedrooms/bathrooms fields
+        if (!propertyData.bedrooms && !propertyData.bathrooms && 
+            !propertyData.living_rooms && !propertyData.kitchen_count) {
+          
+          console.log('Property details not available from API, checking localStorage');
+          try {
+            const existingDetailsStr = localStorage.getItem('propertyDetails');
+            
+            if (existingDetailsStr) {
+              const existingDetails = JSON.parse(existingDetailsStr);
+              
+              if (existingDetails[selectedProperty]) {
+                console.log('Found property details in localStorage:', existingDetails[selectedProperty]);
+                propertyDetails = existingDetails[selectedProperty];
+                
+                // Add these properties to propertyData
+                propertyData.bedrooms = propertyDetails.bedrooms;
+                propertyData.bathrooms = propertyDetails.bathrooms;
+                propertyData.living_rooms = propertyDetails.living_rooms;
+                propertyData.kitchen_count = propertyDetails.kitchen_count;
+                propertyData.additional_spaces = propertyDetails.additional_spaces;
+              }
+            }
+          } catch (e) {
+            console.error('Error loading property details from localStorage:', e);
+          }
+        }
+        
+        console.log('Final property data for room creation:', propertyData);
+        
+        // Initialize rooms structure
+        const rooms = {};
+        
+        // Add bedrooms
+        if (propertyData.bedrooms && propertyData.bedrooms !== '0') {
+          console.log('Adding bedrooms:', propertyData.bedrooms);
+          const bedroomCount = propertyData.bedrooms === '6+' ? 6 : parseInt(propertyData.bedrooms);
+          for (let i = 1; i <= bedroomCount; i++) {
+            rooms[`bedroom_${i}`] = `Bedroom ${i}`;
+          }
+        }
+        
+        // Add bathrooms
+        if (propertyData.bathrooms) {
+          console.log('Adding bathrooms:', propertyData.bathrooms);
+          const bathroomCount = propertyData.bathrooms === '4+' ? 4 : 
+                              propertyData.bathrooms.includes('.5') ? 
+                              Math.floor(parseFloat(propertyData.bathrooms)) + 1 : 
+                              parseInt(propertyData.bathrooms);
+          
+          for (let i = 1; i <= bathroomCount; i++) {
+            rooms[`bathroom_${i}`] = `Bathroom ${i}`;
+          }
+        }
+        
+        // Add living rooms - check both living_rooms and livingRooms fields
+        const livingRoomsValue = propertyData.living_rooms || propertyData.livingRooms;
+        if (livingRoomsValue && livingRoomsValue !== '0') {
+          console.log('Adding living rooms:', livingRoomsValue);
+          const livingRoomCount = livingRoomsValue === '4+' ? 4 : parseInt(livingRoomsValue);
+          for (let i = 1; i <= livingRoomCount; i++) {
+            rooms[`livingroom_${i}`] = `Living Room ${i}`;
+          }
+        }
+        
+        // Add kitchen - check both kitchen_count and kitchenCount fields
+        const kitchenValue = propertyData.kitchen_count || propertyData.kitchenCount;
+        if (kitchenValue && kitchenValue !== '0') {
+          console.log('Adding kitchens:', kitchenValue);
+          const kitchenCount = kitchenValue === '4+' ? 4 : parseInt(kitchenValue);
+          for (let i = 1; i <= kitchenCount; i++) {
+            rooms[`kitchen_${i}`] = `Kitchen ${i}`;
+          }
+        }
+        
+        // Add additional spaces if checked
+        if (propertyData.additional_spaces) {
+          console.log('Adding additional spaces:', propertyData.additional_spaces);
+          let additionalSpaces;
+          try {
+            additionalSpaces = typeof propertyData.additional_spaces === 'string' ? 
+                                  JSON.parse(propertyData.additional_spaces) : 
+                                  propertyData.additional_spaces;
+            
+            Object.entries(additionalSpaces).forEach(([key, value]) => {
+              if (value) {
+                rooms[key] = key.charAt(0).toUpperCase() + key.slice(1);
+              }
+            });
+          } catch (e) {
+            console.error('Error parsing additional spaces:', e);
+          }
+        }
+        
+        // If no rooms were found, add a default General room
+        if (Object.keys(rooms).length === 0) {
+          console.log('No rooms found, adding default room');
+          rooms['general'] = 'General';
+        }
+        
+        console.log('Final rooms structure:', rooms);
+        
+        // Initialize photo states for each room
+        const initialPhotos = {};
+        const initialPreviewPhotos = {};
+        const initialPhotoNotes = {};
+        const initialTags = {};
+        
+        Object.keys(rooms).forEach(roomKey => {
+          initialPhotos[roomKey] = [];
+          initialPreviewPhotos[roomKey] = [];
+          initialPhotoNotes[roomKey] = {};
+          initialTags[roomKey] = {};
+        });
+        
+        // Set selected room type to the first room
+        setSelectedRoomType(Object.keys(rooms)[0]);
+        
+        setPropertyRooms(rooms);
+        setPhotos(initialPhotos);
+        setPreviewPhotos(initialPreviewPhotos);
+        setPhotoNotes(initialPhotoNotes);
+        setTags(initialTags);
+        
+      } catch (error) {
+        console.error('Error fetching property details:', error);
+        toast.error('Failed to load property details.');
+        
+        // Create a default room in case of error
+        const defaultRoom = { 'general': 'General' };
+        setPropertyRooms(defaultRoom);
+        setSelectedRoomType('general');
+        setPhotos({ 'general': [] });
+        setPreviewPhotos({ 'general': [] });
+        setPhotoNotes({ 'general': {} });
+        setTags({ 'general': {} });
+      }
+    };
+    
+    fetchPropertyDetails();
+  }, [selectedProperty]);
+  
   // Preview photos
   useEffect(() => {
-    if (!photos.length) {
-      setPreviewPhotos([]);
-      return;
-    }
-
-    const newPreviewPhotos = [];
-    for (let i = 0; i < photos.length; i++) {
-      const photo = photos[i];
-      const photoURL = URL.createObjectURL(photo);
-      newPreviewPhotos.push(photoURL);
-    }
-
+    if (!propertyRooms) return;
+    
+    const newPreviewPhotos = {...previewPhotos};
+    
+    // Create cleanup URLs array
+    const urlsToCleanup = [];
+    
+    Object.keys(propertyRooms).forEach(roomKey => {
+      if (!photos[roomKey]?.length) {
+        newPreviewPhotos[roomKey] = [];
+        return;
+      }
+      
+      newPreviewPhotos[roomKey] = [];
+      
+      for (let i = 0; i < photos[roomKey].length; i++) {
+        const photo = photos[roomKey][i];
+        const photoURL = URL.createObjectURL(photo);
+        newPreviewPhotos[roomKey].push(photoURL);
+        urlsToCleanup.push(photoURL);
+      }
+    });
+    
     setPreviewPhotos(newPreviewPhotos);
-
+    
     // Cleanup function
     return () => {
-      newPreviewPhotos.forEach(url => URL.revokeObjectURL(url));
+      urlsToCleanup.forEach(url => URL.revokeObjectURL(url));
     };
-  }, [photos]);
+  }, [photos, propertyRooms]);
 
-  const handlePhotoUpload = (e) => {
-    if (e.target.files) {
+  const handlePhotoUpload = (e, roomKey) => {
+    if (e.target.files && roomKey) {
       const selectedFiles = Array.from(e.target.files);
       
-      // CORRECTION: Getting current photo count from photos state
-      const currentPhotoCount = photos.length;
+      // Get current photo count for this room
+      const currentPhotoCount = photos[roomKey]?.length || 0;
       
-      setPhotos(prevPhotos => [...prevPhotos, ...selectedFiles]);
+      // Update photos for this room
+      setPhotos(prevPhotos => ({
+        ...prevPhotos,
+        [roomKey]: [...(prevPhotos[roomKey] || []), ...selectedFiles]
+      }));
       
-      // Create empty notes and tags for new photos
-      const newNotes = { ...photoNotes };
-      const newTags = { ...tags };
+      // Create empty notes and tags for new photos in this room
+      const newNotes = { ...photoNotes[roomKey] };
+      const newTags = { ...tags[roomKey] };
       
       selectedFiles.forEach((_, index) => {
         const photoId = currentPhotoCount + index;
@@ -94,65 +265,97 @@ export default function NewReport() {
         newTags[photoId] = [];
       });
       
-      setPhotoNotes(newNotes);
-      setTags(newTags);
+      setPhotoNotes(prevNotes => ({
+        ...prevNotes,
+        [roomKey]: newNotes
+      }));
+      
+      setTags(prevTags => ({
+        ...prevTags,
+        [roomKey]: newTags
+      }));
     }
   };
 
-  const removePhoto = (index) => {
-    setPhotos(photos.filter((_, i) => i !== index));
-    setPreviewPhotos(previewPhotos.filter((_, i) => i !== index));
+  const removePhoto = (roomKey, index) => {
+    // Update photos for this room
+    setPhotos(prevPhotos => ({
+      ...prevPhotos,
+      [roomKey]: prevPhotos[roomKey].filter((_, i) => i !== index)
+    }));
     
-    // Update notes and tags
-    const newNotes = { ...photoNotes };
-    const newTags = { ...tags };
+    // Update preview photos for this room
+    setPreviewPhotos(prevPreviews => ({
+      ...prevPreviews,
+      [roomKey]: prevPreviews[roomKey].filter((_, i) => i !== index)
+    }));
     
-    delete newNotes[index];
-    delete newTags[index];
+    // Update notes and tags for this room
+    const newRoomNotes = { ...photoNotes[roomKey] };
+    const newRoomTags = { ...tags[roomKey] };
     
-    // Update indices for all remaining photos
-    const updatedNotes = {};
-    const updatedTags = {};
+    delete newRoomNotes[index];
+    delete newRoomTags[index];
+    
+    // Update indices for all remaining photos in this room
+    const updatedRoomNotes = {};
+    const updatedRoomTags = {};
     
     let newIndex = 0;
-    for (let i = 0; i < photos.length; i++) {
+    for (let i = 0; i < photos[roomKey].length; i++) {
       if (i !== index) {
-        updatedNotes[newIndex] = newNotes[i];
-        updatedTags[newIndex] = newTags[i];
+        updatedRoomNotes[newIndex] = newRoomNotes[i];
+        updatedRoomTags[newIndex] = newRoomTags[i];
         newIndex++;
       }
     }
     
-    setPhotoNotes(updatedNotes);
-    setTags(updatedTags);
+    setPhotoNotes(prevNotes => ({
+      ...prevNotes,
+      [roomKey]: updatedRoomNotes
+    }));
+    
+    setTags(prevTags => ({
+      ...prevTags,
+      [roomKey]: updatedRoomTags
+    }));
   };
 
-  const handleNoteChange = (index, note) => {
-    setPhotoNotes({
-      ...photoNotes,
-      [index]: note
-    });
+  const handleNoteChange = (roomKey, index, note) => {
+    setPhotoNotes(prevNotes => ({
+      ...prevNotes,
+      [roomKey]: {
+        ...prevNotes[roomKey],
+        [index]: note
+      }
+    }));
   };
 
-  const addTag = (index, tag) => {
+  const addTag = (roomKey, index, tag) => {
     if (!tag.trim()) return;
     
-    setTags({
-      ...tags,
-      [index]: [...(tags[index] || []), tag.trim()]
-    });
+    setTags(prevTags => ({
+      ...prevTags,
+      [roomKey]: {
+        ...prevTags[roomKey],
+        [index]: [...(prevTags[roomKey][index] || []), tag.trim()]
+      }
+    }));
   };
 
-  const removeTag = (photoIndex, tagIndex) => {
-    setTags({
-      ...tags,
-      [photoIndex]: tags[photoIndex].filter((_, i) => i !== tagIndex)
-    });
+  const removeTag = (roomKey, photoIndex, tagIndex) => {
+    setTags(prevTags => ({
+      ...prevTags,
+      [roomKey]: {
+        ...prevTags[roomKey],
+        [photoIndex]: prevTags[roomKey][photoIndex].filter((_, i) => i !== tagIndex)
+      }
+    }));
   };
 
-  const handleKeyPress = (e, index) => {
+  const handleKeyPress = (e, roomKey, index) => {
     if (e.key === 'Enter' && e.target.value.trim()) {
-      addTag(index, e.target.value);
+      addTag(roomKey, index, e.target.value);
       e.target.value = '';
       e.preventDefault();
     }
@@ -196,24 +399,39 @@ export default function NewReport() {
       
       const reportId = response.data.id;
       
-      // Check if there are photos
-      if (photos.length > 0) {
-        // Upload photos
-        for (let i = 0; i < photos.length; i++) {
-          const formData = new FormData();
-          formData.append('photo', photos[i]);
-          
-          if (photoNotes[i]) {
-            formData.append('note', photoNotes[i]);
+      // Check if there are photos in any room
+      if (propertyRooms && Object.keys(propertyRooms).some(roomKey => photos[roomKey]?.length > 0)) {
+        // Upload photos for each room
+        for (const roomKey of Object.keys(propertyRooms)) {
+          if (photos[roomKey]?.length > 0) {
+            for (let i = 0; i < photos[roomKey].length; i++) {
+              const formData = new FormData();
+              formData.append('photo', photos[roomKey][i]);
+              
+              // Add room type as a tag
+              const roomName = propertyRooms[roomKey];
+              
+              if (photoNotes[roomKey] && photoNotes[roomKey][i]) {
+                formData.append('note', photoNotes[roomKey][i]);
+              }
+              
+              // Create or update tags to include room type
+              const photoTags = tags[roomKey] && tags[roomKey][i] ? [...tags[roomKey][i]] : [];
+              
+              // Add room name as a tag if it doesn't exist already
+              if (!photoTags.includes(roomName)) {
+                photoTags.push(roomName);
+              }
+              
+              if (photoTags.length > 0) {
+                formData.append('tags', JSON.stringify(photoTags));
+              }
+              
+              console.log(`Uploading ${roomName} photo ${i+1}...`);
+              await apiService.photos.upload(reportId, formData);
+              console.log(`${roomName} photo ${i+1} uploaded.`);
+            }
           }
-          
-          if (tags[i] && tags[i].length > 0) {
-            formData.append('tags', JSON.stringify(tags[i]));
-          }
-          
-          console.log(`Uploading photo ${i+1}...`);
-          await apiService.photos.upload(reportId, formData);
-          console.log(`Photo ${i+1} uploaded.`);
         }
       }
       
@@ -451,83 +669,152 @@ export default function NewReport() {
                 <div className="p-6 space-y-6">
                   <div>
                     <h3 className="text-xl font-semibold text-gray-800 mb-4">Upload Photos</h3>
-                    <p className="text-gray-600 mb-6">Upload photos to document the condition of your property</p>
+                    <p className="text-gray-600 mb-6">Upload photos for each room to document the condition of your property</p>
                     
-                    <div className="flex flex-wrap gap-6 mb-6">
-                      {previewPhotos.map((preview, index) => (
-                        <div key={index} className="relative bg-gray-50 p-4 rounded-lg border border-gray-200">
-                          <img 
-                            src={preview} 
-                            alt={`Photo ${index + 1}`} 
-                            className="w-32 h-32 object-cover rounded-lg"
-                          />
-                          <button
-                            type="button"
-                            onClick={() => removePhoto(index)}
-                            className="absolute -top-2 -right-2 bg-red-500 text-white rounded-full w-6 h-6 flex items-center justify-center shadow-md"
-                            aria-label="Remove photo"
-                          >
-                            ×
-                          </button>
-                          
-                          <div className="mt-3 w-32">
-                            <input
-                              type="text"
-                              placeholder="Add note"
-                              value={photoNotes[index] || ''}
-                              onChange={(e) => handleNoteChange(index, e.target.value)}
-                              className="w-full text-xs p-2 border border-gray-300 rounded"
-                            />
-                            
-                            <div className="mt-2">
-                              <input
-                                type="text"
-                                placeholder="Add tag and press Enter"
-                                onKeyPress={(e) => handleKeyPress(e, index)}
-                                className="w-full text-xs p-2 border border-gray-300 rounded"
-                              />
-                              
-                              <div className="flex flex-wrap gap-1 mt-2">
-                                {tags[index]?.map((tag, tagIndex) => (
-                                  <span
-                                    key={tagIndex}
-                                    className="inline-flex items-center text-xs bg-indigo-50 text-indigo-700 rounded px-1.5 py-0.5"
-                                  >
-                                    {tag}
-                                    <button
-                                      type="button"
-                                      onClick={() => removeTag(index, tagIndex)}
-                                      className="ml-1 text-gray-400 hover:text-gray-600"
-                                    >
-                                      ×
-                                    </button>
+                    {propertyRooms ? (
+                      <div className="space-y-8">
+                        {/* Room selector as vertical list for mobile friendliness */}
+                        <div className="mb-4">
+                          <h4 className="text-sm font-medium text-gray-700 mb-2">Select Room:</h4>
+                          <div className="grid grid-cols-2 gap-2 md:flex md:flex-wrap md:gap-3">
+                            {Object.entries(propertyRooms).map(([roomKey, roomName]) => (
+                              <button
+                                key={roomKey}
+                                type="button"
+                                onClick={() => setSelectedRoomType(roomKey)}
+                                className={`flex items-center justify-between px-3 py-2 rounded-lg text-left w-full md:w-auto transition-all ${photos[roomKey]?.length > 0 
+                                  ? 'bg-green-50 border border-green-200 text-green-700 font-medium' 
+                                  : selectedRoomType === roomKey 
+                                    ? 'bg-indigo-50 border border-indigo-200 text-indigo-700 font-medium' 
+                                    : 'bg-gray-50 border border-gray-200 text-gray-700 hover:bg-gray-100'}`}
+                              >
+                                <span className="whitespace-nowrap">{roomName}</span>
+                                {photos[roomKey]?.length > 0 && (
+                                  <span className="ml-2 bg-green-100 text-green-700 px-2 py-0.5 rounded-full text-xs">
+                                    {photos[roomKey].length}
                                   </span>
-                                ))}
+                                )}
+                              </button>
+                            ))}
+                          </div>
+                        </div>
+                        
+                        {selectedRoomType ? (
+                          // Selected room photos
+                          <div className="mt-6">
+                            <h4 className="text-lg font-medium text-gray-800 mb-4">
+                              {propertyRooms[selectedRoomType]} Photos
+                            </h4>
+                            
+                            <div className="flex flex-wrap gap-6 mb-6">
+                              {previewPhotos[selectedRoomType]?.map((preview, index) => (
+                                <div key={index} className="relative bg-gray-50 p-4 rounded-lg border border-gray-200">
+                                  <img 
+                                    src={preview} 
+                                    alt={`${propertyRooms[selectedRoomType]} Photo ${index + 1}`} 
+                                    className="w-32 h-32 object-cover rounded-lg"
+                                  />
+                                  <button
+                                    type="button"
+                                    onClick={() => removePhoto(selectedRoomType, index)}
+                                    className="absolute -top-2 -right-2 bg-red-500 text-white rounded-full w-6 h-6 flex items-center justify-center shadow-md"
+                                    aria-label="Remove photo"
+                                  >
+                                    ×
+                                  </button>
+                                  
+                                  <div className="mt-3 w-32">
+                                    <input
+                                      type="text"
+                                      placeholder="Add note"
+                                      value={photoNotes[selectedRoomType] && photoNotes[selectedRoomType][index] || ''}
+                                      onChange={(e) => handleNoteChange(selectedRoomType, index, e.target.value)}
+                                      className="w-full text-xs p-2 border border-gray-300 rounded"
+                                    />
+                                    
+                                    <div className="mt-2">
+                                      <input
+                                        type="text"
+                                        placeholder="Add tag and press Enter"
+                                        onKeyPress={(e) => handleKeyPress(e, selectedRoomType, index)}
+                                        className="w-full text-xs p-2 border border-gray-300 rounded"
+                                      />
+                                      
+                                      <div className="flex flex-wrap gap-1 mt-2">
+                                        {tags[selectedRoomType] && tags[selectedRoomType][index]?.map((tag, tagIndex) => (
+                                          <span
+                                            key={tagIndex}
+                                            className="inline-flex items-center text-xs bg-indigo-50 text-indigo-700 rounded px-1.5 py-0.5"
+                                          >
+                                            {tag}
+                                            <button
+                                              type="button"
+                                              onClick={() => removeTag(selectedRoomType, index, tagIndex)}
+                                              className="ml-1 text-gray-400 hover:text-gray-600"
+                                            >
+                                              ×
+                                            </button>
+                                          </span>
+                                        ))}
+                                      </div>
+                                    </div>
+                                  </div>
+                                </div>
+                              ))}
+                              
+                              <div className="w-32 h-32 flex items-center justify-center border-2 border-dashed border-gray-300 rounded-lg cursor-pointer hover:border-indigo-500 transition-all duration-300"
+                                   onClick={() => fileInputRefs.current[selectedRoomType]?.click()}>
+                                <div className="text-center">
+                                  <svg xmlns="http://www.w3.org/2000/svg" className="h-10 w-10 mx-auto text-gray-400" fill="none" viewBox="0 0 24 24" stroke="currentColor">
+                                    <path strokeLinecap="round" strokeLinejoin="round" strokeWidth={2} d="M12 6v6m0 0v6m0-6h6m-6 0H6" />
+                                  </svg>
+                                  <span className="text-xs text-gray-500 mt-2 block">Add Photo</span>
+                                </div>
                               </div>
+                              
+                              <input
+                                type="file"
+                                ref={el => fileInputRefs.current[selectedRoomType] = el}
+                                onChange={(e) => handlePhotoUpload(e, selectedRoomType)}
+                                accept="image/*"
+                                multiple
+                                className="hidden"
+                              />
+                            </div>
+                          </div>
+                        ) : (
+                          <div className="text-center py-12 bg-gray-50 rounded-lg">
+                            <p className="text-gray-600">Please select a room to add photos</p>
+                          </div>
+                        )}
+                        
+                        {/* Photo summary */}
+                        <div className="bg-gray-50 p-4 rounded-lg mt-6">
+                          <h4 className="font-medium text-gray-700 mb-3">Photo Summary</h4>
+                          <div className="grid gap-2">
+                            {Object.entries(propertyRooms).map(([roomKey, roomName]) => (
+                              <div key={roomKey} className="flex justify-between items-center">
+                                <span className="text-sm">{roomName}:</span>
+                                <span className="text-sm font-medium">
+                                  {photos[roomKey]?.length || 0} photo{(photos[roomKey]?.length || 0) !== 1 ? 's' : ''}
+                                </span>
+                              </div>
+                            ))}
+                            <div className="border-t border-gray-200 mt-2 pt-2 flex justify-between items-center">
+                              <span className="text-sm font-medium">Total:</span>
+                              <span className="text-sm font-medium">
+                                {Object.values(photos).reduce((total, roomPhotos) => total + (roomPhotos?.length || 0), 0)} photos
+                              </span>
                             </div>
                           </div>
                         </div>
-                      ))}
-                      
-                      <div className="w-32 h-32 flex items-center justify-center border-2 border-dashed border-gray-300 rounded-lg cursor-pointer hover:border-indigo-500 transition-all duration-300"
-                           onClick={() => fileInputRef.current.click()}>
-                        <div className="text-center">
-                          <svg xmlns="http://www.w3.org/2000/svg" className="h-10 w-10 mx-auto text-gray-400" fill="none" viewBox="0 0 24 24" stroke="currentColor">
-                            <path strokeLinecap="round" strokeLinejoin="round" strokeWidth={2} d="M12 6v6m0 0v6m0-6h6m-6 0H6" />
-                          </svg>
-                          <span className="text-xs text-gray-500 mt-2 block">Add Photo</span>
-                        </div>
                       </div>
-                      
-                      <input
-                        type="file"
-                        ref={fileInputRef}
-                        onChange={handlePhotoUpload}
-                        accept="image/*"
-                        multiple
-                        className="hidden"
-                      />
-                    </div>
+                    ) : (
+                      <div className="text-center py-12 bg-gray-50 rounded-lg">
+                        <div className="animate-spin rounded-full h-8 w-8 border-t-2 border-b-2 border-indigo-500 mx-auto mb-4"></div>
+                        <p className="text-gray-600">Loading property rooms...</p>
+                      </div>
+                    )}
                   </div>
                   
                   <div className="pt-4 flex justify-between items-center border-t border-gray-100 mt-6">
@@ -595,19 +882,30 @@ export default function NewReport() {
                     <div className="bg-gray-50 rounded-lg p-4">
                       <h3 className="font-medium text-gray-700 mb-3">Photos</h3>
                       
-                      {photos.length > 0 ? (
-                        <div className="flex flex-wrap gap-2">
-                          {previewPhotos.map((preview, index) => (
-                            <div key={index} className="relative">
-                              <img 
-                                src={preview} 
-                                alt={`Photo ${index + 1}`} 
-                                className="w-16 h-16 object-cover rounded border border-gray-200"
-                              />
-                            </div>
-                          ))}
+                      {propertyRooms && Object.values(photos).some(roomPhotos => roomPhotos?.length > 0) ? (
+                        <div>
+                          <div className="flex flex-wrap gap-2">
+                            {Object.entries(propertyRooms).map(([roomKey, roomName]) => 
+                              photos[roomKey]?.length > 0 && (
+                                <div key={roomKey} className="mb-3">
+                                  <p className="text-xs font-medium text-gray-600 mb-1">{roomName}:</p>
+                                  <div className="flex flex-wrap gap-1">
+                                    {previewPhotos[roomKey]?.map((preview, index) => (
+                                      <div key={index} className="relative">
+                                        <img 
+                                          src={preview} 
+                                          alt={`${roomName} Photo ${index + 1}`} 
+                                          className="w-12 h-12 object-cover rounded border border-gray-200"
+                                        />
+                                      </div>
+                                    ))}
+                                  </div>
+                                </div>
+                              )
+                            )}
+                          </div>
                           <div className="text-xs text-gray-500 mt-2 w-full">
-                            {photos.length} photo{photos.length !== 1 ? 's' : ''} attached
+                            {Object.values(photos).reduce((total, roomPhotos) => total + (roomPhotos?.length || 0), 0)} photo{Object.values(photos).reduce((total, roomPhotos) => total + (roomPhotos?.length || 0), 0) !== 1 ? 's' : ''} attached
                           </div>
                         </div>
                       ) : (

@@ -597,115 +597,295 @@ export default function ReportDetail() {
               </div>
             </div>
           ) : (
-            <div className="grid grid-cols-2 sm:grid-cols-3 md:grid-cols-4 lg:grid-cols-5 gap-4">
-              {photos.map((photo) => {
-                // Geçerli bir ID kontrolü
-                if (!photo || !photo.id) {
-                  console.error('Invalid photo object:', photo);
-                  return null;
-                }
+            <div>
+              {/* Fotoğrafları odalarına göre gruplandır */}
+              {(() => {
+                // Fotoğrafları tag'lerine göre gruplandır
+                const photosByRoom = {};
+                const untaggedPhotos = [];
                 
-                // Fotoğraf resim URL'i
-                const imgSrc = photo.imgSrc || '/images/placeholder-image.svg';
-                
-                // Bu fotoğraf için alternatif URL'ler
-                const fallbackUrls = photo.fallbackUrls || [
-                  // Sabit API URL'leri
-                  `${PRODUCTION_API_URL}/uploads/${photo.file_path}`,
-                  `${DEVELOPMENT_API_URL}/uploads/${photo.file_path}`,
-                  `${PRODUCTION_API_URL}/api/photos/public-access/${photo.file_path}`,
-                  `${DEVELOPMENT_API_URL}/api/photos/public-access/${photo.file_path}`,
-                  '/images/placeholder-image.svg'
-                ];
-                
-                return (
-                  <div key={photo.id} className="group bg-white rounded-xl shadow-sm overflow-hidden border border-gray-100 hover:shadow-md transition-all duration-200">
-                    <div className="relative">
-                      <Link href={`/photos/${photo.id}`}>
-                        <div className="aspect-square overflow-hidden" 
-                             style={{
-                               display: 'flex',
-                               justifyContent: 'center',
-                               alignItems: 'center',
-                               backgroundColor: '#f9f9f9'
-                             }}>
-                          {/* Yükleme durumu için state */}
-                          <div
-                            className="absolute inset-0 flex items-center justify-center bg-gray-50 z-0"
-                          >
-                            <div className="animate-pulse rounded-full h-10 w-10 border-2 border-indigo-500"></div>
-                          </div>
-                          
-                          <img 
-                            src={imgSrc} 
-                            alt={photo.note || 'Report photo'}
-                            crossOrigin="anonymous"
-                            onError={(e) => {
-                              console.error('Image loading error for:', e.target.src);
-                              
-                              // Fallback URL'lerin sıradaki URL'sini dene
-                              if (!fallbackUrls || !Array.isArray(fallbackUrls)) {
-                                console.error('No fallback URLs available');
-                                e.target.src = '/images/placeholder-image.svg';
-                                e.target.onerror = null;
-                                return;
-                              }
-                              
-                              const currentIndex = fallbackUrls.indexOf(e.target.src);
-                              if (currentIndex !== -1 && currentIndex < fallbackUrls.length - 1) {
-                                const nextUrl = fallbackUrls[currentIndex + 1];
-                                console.log(`Trying next URL (${currentIndex + 2}/${fallbackUrls.length}): ${nextUrl}`);
-                                e.target.src = nextUrl;
-                              } else {
-                                // Tüm URL'ler denendiyse placeholder'a dön
-                                console.log('All URLs failed, using placeholder image');
-                                e.target.src = '/images/placeholder-image.svg';
-                                e.target.onerror = null; // Sonsuz döngüden kaçın
-                              }
-                            }}
-                            onLoad={(e) => {
-                              // Yükleme başarılı olduğunda yükleme animasyonunu gizle
-                              const loadingEl = e.target.previousSibling;
-                              if (loadingEl) loadingEl.style.display = 'none';
-                            }}
-                            className="w-full h-full object-cover group-hover:scale-105 transition-transform duration-300 z-10 relative"
-                          />
-                        </div>
-                      </Link>
-                      <button
-                        onClick={() => handleDeletePhoto(photo.id)}
-                        className="absolute top-2 right-2 bg-red-500 text-white rounded-full w-6 h-6 flex items-center justify-center shadow-md opacity-0 group-hover:opacity-100 transition-opacity"
-                        aria-label="Delete photo"
-                      >
-                        <svg xmlns="http://www.w3.org/2000/svg" className="h-4 w-4" fill="none" viewBox="0 0 24 24" stroke="currentColor">
-                          <path strokeLinecap="round" strokeLinejoin="round" strokeWidth={2} d="M19 7l-.867 12.142A2 2 0 0116.138 21H7.862a2 2 0 01-1.995-1.858L5 7m5 4v6m4-6v6m1-10V4a1 1 0 00-1-1h-4a1 1 0 00-1 1v3M4 7h16" />
-                        </svg>
-                      </button>
-                    </div>
+                // İlk olarak fotoğrafları etiketlerine göre ayır
+                photos.forEach(photo => {
+                  // Eğer photo.tags varsa ve en az bir tag içeriyorsa
+                  if (photo.tags && photo.tags.length > 0) {
+                    // Oda etiketini bulalım (Bedroom, Bathroom, Living Room, Kitchen)
+                    const roomTag = photo.tags.find(tag => 
+                      tag.includes('Bedroom') || 
+                      tag.includes('Bathroom') || 
+                      tag.includes('Living Room') ||  
+                      tag.includes('Kitchen') ||
+                      tag.includes('Balcony') ||
+                      tag.includes('Garage') ||
+                      tag.includes('Garden') ||
+                      tag.includes('Patio') ||
+                      tag.includes('Basement') ||
+                      tag.includes('Attic') ||
+                      tag.includes('Terrace') ||
+                      tag.includes('Pool')
+                    );
                     
-                    {(photo.note || (photo.tags && photo.tags.length > 0)) && (
-                      <div className="p-2 bg-gray-50 text-xs">
-                        {photo.note && (
-                          <p className="text-gray-700 truncate" title={photo.note}>{photo.note}</p>
-                        )}
-                        
-                        {photo.tags && photo.tags.length > 0 && (
-                          <div className="flex flex-wrap gap-1 mt-1 max-w-full overflow-hidden">
-                            {photo.tags.slice(0, 2).map((tag, index) => (
-                              <span key={index} className="inline-flex items-center text-xs bg-indigo-50 text-indigo-700 rounded px-1.5 py-0.5 truncate max-w-[80px]" title={tag}>
-                                {tag}
-                              </span>
-                            ))}
-                            {photo.tags.length > 2 && (
-                              <span className="text-xs text-gray-500">+{photo.tags.length - 2}</span>
-                            )}
-                          </div>
-                        )}
+                    if (roomTag) {
+                      // Bu oda için dizi yoksa oluştur
+                      if (!photosByRoom[roomTag]) {
+                        photosByRoom[roomTag] = [];
+                      }
+                      // Fotoğrafı oda grubuna ekle
+                      photosByRoom[roomTag].push(photo);
+                    } else {
+                      // Oda etiketi yoksa etiketlenmemiş olarak ekle
+                      untaggedPhotos.push(photo);
+                    }
+                  } else {
+                    // Hiç etiket yoksa etiketlenmemiş olarak ekle
+                    untaggedPhotos.push(photo);
+                  }
+                });
+                
+                // Gruplandırılmış fotoğrafları göster
+                return (
+                  <div className="space-y-8">
+                    {/* Önce her bir oda grubunu göster */}
+                    {Object.entries(photosByRoom).map(([roomName, roomPhotos], index) => (
+                      <div key={index} className="space-y-3">
+                        <h3 className="text-lg font-medium flex items-center">
+                          <span className="w-2 h-6 bg-green-500 rounded-full mr-2"></span>
+                          {roomName} ({roomPhotos.length} photo{roomPhotos.length !== 1 ? 's' : ''})
+                        </h3>
+                        <div className="grid grid-cols-2 sm:grid-cols-3 md:grid-cols-4 lg:grid-cols-5 gap-4">
+                          {roomPhotos.map((photo) => {
+                            // Geçerli bir ID kontrolü
+                            if (!photo || !photo.id) {
+                              console.error('Invalid photo object:', photo);
+                              return null;
+                            }
+                            
+                            // Fotoğraf resim URL'i
+                            const imgSrc = photo.imgSrc || '/images/placeholder-image.svg';
+                            
+                            // Bu fotoğraf için alternatif URL'ler
+                            const fallbackUrls = photo.fallbackUrls || [
+                              // Sabit API URL'leri
+                              `${PRODUCTION_API_URL}/uploads/${photo.file_path}`,
+                              `${DEVELOPMENT_API_URL}/uploads/${photo.file_path}`,
+                              `${PRODUCTION_API_URL}/api/photos/public-access/${photo.file_path}`,
+                              `${DEVELOPMENT_API_URL}/api/photos/public-access/${photo.file_path}`,
+                              '/images/placeholder-image.svg'
+                            ];
+                            
+                            return (
+                              <div key={photo.id} className="group bg-white rounded-xl shadow-sm overflow-hidden border border-gray-100 hover:shadow-md transition-all duration-200">
+                                <div className="relative">
+                                  <Link href={`/photos/${photo.id}`}>
+                                    <div className="aspect-square overflow-hidden" 
+                                         style={{
+                                           display: 'flex',
+                                           justifyContent: 'center',
+                                           alignItems: 'center',
+                                           backgroundColor: '#f9f9f9'
+                                         }}>
+                                      {/* Yükleme durumu için state */}
+                                      <div
+                                        className="absolute inset-0 flex items-center justify-center bg-gray-50 z-0"
+                                      >
+                                        <div className="animate-pulse rounded-full h-10 w-10 border-2 border-indigo-500"></div>
+                                      </div>
+                                      
+                                      <img 
+                                        src={imgSrc} 
+                                        alt={photo.note || 'Report photo'}
+                                        crossOrigin="anonymous"
+                                        onError={(e) => {
+                                          console.error('Image loading error for:', e.target.src);
+                                          
+                                          // Fallback URL'lerin sıradaki URL'sini dene
+                                          if (!fallbackUrls || !Array.isArray(fallbackUrls)) {
+                                            console.error('No fallback URLs available');
+                                            e.target.src = '/images/placeholder-image.svg';
+                                            e.target.onerror = null;
+                                            return;
+                                          }
+                                          
+                                          const currentIndex = fallbackUrls.indexOf(e.target.src);
+                                          if (currentIndex !== -1 && currentIndex < fallbackUrls.length - 1) {
+                                            const nextUrl = fallbackUrls[currentIndex + 1];
+                                            console.log(`Trying next URL (${currentIndex + 2}/${fallbackUrls.length}): ${nextUrl}`);
+                                            e.target.src = nextUrl;
+                                          } else {
+                                            // Tüm URL'ler denendiyse placeholder'a dön
+                                            console.log('All URLs failed, using placeholder image');
+                                            e.target.src = '/images/placeholder-image.svg';
+                                            e.target.onerror = null; // Sonsuz döngüden kaçın
+                                          }
+                                        }}
+                                        onLoad={(e) => {
+                                          // Yükleme başarılı olduğunda yükleme animasyonunu gizle
+                                          const loadingEl = e.target.previousSibling;
+                                          if (loadingEl) loadingEl.style.display = 'none';
+                                        }}
+                                        className="w-full h-full object-cover group-hover:scale-105 transition-transform duration-300 z-10 relative"
+                                      />
+                                    </div>
+                                  </Link>
+                                  <button
+                                    onClick={() => handleDeletePhoto(photo.id)}
+                                    className="absolute top-2 right-2 bg-red-500 text-white rounded-full w-6 h-6 flex items-center justify-center shadow-md opacity-0 group-hover:opacity-100 transition-opacity"
+                                    aria-label="Delete photo"
+                                  >
+                                    <svg xmlns="http://www.w3.org/2000/svg" className="h-4 w-4" fill="none" viewBox="0 0 24 24" stroke="currentColor">
+                                      <path strokeLinecap="round" strokeLinejoin="round" strokeWidth={2} d="M19 7l-.867 12.142A2 2 0 0116.138 21H7.862a2 2 0 01-1.995-1.858L5 7m5 4v6m4-6v6m1-10V4a1 1 0 00-1-1h-4a1 1 0 00-1 1v3M4 7h16" />
+                                    </svg>
+                                  </button>
+                                </div>
+                                
+                                {(photo.note || (photo.tags && photo.tags.length > 0)) && (
+                                  <div className="p-2 bg-gray-50 text-xs">
+                                    {photo.note && (
+                                      <p className="text-gray-700 truncate" title={photo.note}>{photo.note}</p>
+                                    )}
+                                    
+                                    {photo.tags && photo.tags.length > 0 && (
+                                      <div className="flex flex-wrap gap-1 mt-1 max-w-full overflow-hidden">
+                                        {photo.tags.filter(tag => tag !== roomName).slice(0, 2).map((tag, index) => (
+                                          <span key={index} className="inline-flex items-center text-xs bg-indigo-50 text-indigo-700 rounded px-1.5 py-0.5 truncate max-w-[80px]" title={tag}>
+                                            {tag}
+                                          </span>
+                                        ))}
+                                        {photo.tags.filter(tag => tag !== roomName).length > 2 && (
+                                          <span className="text-xs text-gray-500">+{photo.tags.filter(tag => tag !== roomName).length - 2}</span>
+                                        )}
+                                      </div>
+                                    )}
+                                  </div>
+                                )}
+                              </div>
+                            );
+                          })}
+                        </div>
+                      </div>
+                    ))}
+                    
+                    {/* Sonra etiketlenmemiş fotoğrafları göster (eğer varsa) */}
+                    {untaggedPhotos.length > 0 && (
+                      <div className="space-y-3">
+                        <h3 className="text-lg font-medium flex items-center">
+                          <span className="w-2 h-6 bg-gray-400 rounded-full mr-2"></span>
+                          Other Photos ({untaggedPhotos.length} photo{untaggedPhotos.length !== 1 ? 's' : ''})
+                        </h3>
+                        <div className="grid grid-cols-2 sm:grid-cols-3 md:grid-cols-4 lg:grid-cols-5 gap-4">
+                          {untaggedPhotos.map((photo) => {
+                            // Geçerli bir ID kontrolü
+                            if (!photo || !photo.id) {
+                              console.error('Invalid photo object:', photo);
+                              return null;
+                            }
+                            
+                            // Fotoğraf resim URL'i
+                            const imgSrc = photo.imgSrc || '/images/placeholder-image.svg';
+                            
+                            // Bu fotoğraf için alternatif URL'ler
+                            const fallbackUrls = photo.fallbackUrls || [
+                              // Sabit API URL'leri
+                              `${PRODUCTION_API_URL}/uploads/${photo.file_path}`,
+                              `${DEVELOPMENT_API_URL}/uploads/${photo.file_path}`,
+                              `${PRODUCTION_API_URL}/api/photos/public-access/${photo.file_path}`,
+                              `${DEVELOPMENT_API_URL}/api/photos/public-access/${photo.file_path}`,
+                              '/images/placeholder-image.svg'
+                            ];
+                            
+                            return (
+                              <div key={photo.id} className="group bg-white rounded-xl shadow-sm overflow-hidden border border-gray-100 hover:shadow-md transition-all duration-200">
+                                <div className="relative">
+                                  <Link href={`/photos/${photo.id}`}>
+                                    <div className="aspect-square overflow-hidden" 
+                                         style={{
+                                           display: 'flex',
+                                           justifyContent: 'center',
+                                           alignItems: 'center',
+                                           backgroundColor: '#f9f9f9'
+                                         }}>
+                                      {/* Yükleme durumu için state */}
+                                      <div
+                                        className="absolute inset-0 flex items-center justify-center bg-gray-50 z-0"
+                                      >
+                                        <div className="animate-pulse rounded-full h-10 w-10 border-2 border-indigo-500"></div>
+                                      </div>
+                                      
+                                      <img 
+                                        src={imgSrc} 
+                                        alt={photo.note || 'Report photo'}
+                                        crossOrigin="anonymous"
+                                        onError={(e) => {
+                                          console.error('Image loading error for:', e.target.src);
+                                          
+                                          // Fallback URL'lerin sıradaki URL'sini dene
+                                          if (!fallbackUrls || !Array.isArray(fallbackUrls)) {
+                                            console.error('No fallback URLs available');
+                                            e.target.src = '/images/placeholder-image.svg';
+                                            e.target.onerror = null;
+                                            return;
+                                          }
+                                          
+                                          const currentIndex = fallbackUrls.indexOf(e.target.src);
+                                          if (currentIndex !== -1 && currentIndex < fallbackUrls.length - 1) {
+                                            const nextUrl = fallbackUrls[currentIndex + 1];
+                                            console.log(`Trying next URL (${currentIndex + 2}/${fallbackUrls.length}): ${nextUrl}`);
+                                            e.target.src = nextUrl;
+                                          } else {
+                                            // Tüm URL'ler denendiyse placeholder'a dön
+                                            console.log('All URLs failed, using placeholder image');
+                                            e.target.src = '/images/placeholder-image.svg';
+                                            e.target.onerror = null; // Sonsuz döngüden kaçın
+                                          }
+                                        }}
+                                        onLoad={(e) => {
+                                          // Yükleme başarılı olduğunda yükleme animasyonunu gizle
+                                          const loadingEl = e.target.previousSibling;
+                                          if (loadingEl) loadingEl.style.display = 'none';
+                                        }}
+                                        className="w-full h-full object-cover group-hover:scale-105 transition-transform duration-300 z-10 relative"
+                                      />
+                                    </div>
+                                  </Link>
+                                  <button
+                                    onClick={() => handleDeletePhoto(photo.id)}
+                                    className="absolute top-2 right-2 bg-red-500 text-white rounded-full w-6 h-6 flex items-center justify-center shadow-md opacity-0 group-hover:opacity-100 transition-opacity"
+                                    aria-label="Delete photo"
+                                  >
+                                    <svg xmlns="http://www.w3.org/2000/svg" className="h-4 w-4" fill="none" viewBox="0 0 24 24" stroke="currentColor">
+                                      <path strokeLinecap="round" strokeLinejoin="round" strokeWidth={2} d="M19 7l-.867 12.142A2 2 0 0116.138 21H7.862a2 2 0 01-1.995-1.858L5 7m5 4v6m4-6v6m1-10V4a1 1 0 00-1-1h-4a1 1 0 00-1 1v3M4 7h16" />
+                                    </svg>
+                                  </button>
+                                </div>
+                                
+                                {(photo.note || (photo.tags && photo.tags.length > 0)) && (
+                                  <div className="p-2 bg-gray-50 text-xs">
+                                    {photo.note && (
+                                      <p className="text-gray-700 truncate" title={photo.note}>{photo.note}</p>
+                                    )}
+                                    
+                                    {photo.tags && photo.tags.length > 0 && (
+                                      <div className="flex flex-wrap gap-1 mt-1 max-w-full overflow-hidden">
+                                        {photo.tags.slice(0, 2).map((tag, index) => (
+                                          <span key={index} className="inline-flex items-center text-xs bg-indigo-50 text-indigo-700 rounded px-1.5 py-0.5 truncate max-w-[80px]" title={tag}>
+                                            {tag}
+                                          </span>
+                                        ))}
+                                        {photo.tags.length > 2 && (
+                                          <span className="text-xs text-gray-500">+{photo.tags.length - 2}</span>
+                                        )}
+                                      </div>
+                                    )}
+                                  </div>
+                                )}
+                              </div>
+                            );
+                          })}
+                        </div>
                       </div>
                     )}
                   </div>
                 );
-              })}
+              })()}
             </div>
           )}
         </div>

@@ -22,8 +22,10 @@ export default function SharedReportView() {
   const [localApprovalStatus, setLocalApprovalStatus] = useState(null);
   // Rapor güncellendiğini kontrol etmek için state
   const [reportUpdated, setReportUpdated] = useState(false);
-  // Bu raporun daha önce güncellenip güncellenmediğini kontrol eden state
-  const [previousVersion, setPreviousVersion] = useState(null);
+  const [selectedPhoto, setSelectedPhoto] = useState(null);
+  const [photoModalOpen, setPhotoModalOpen] = useState(false);
+  const [rejectionReason, setRejectionReason] = useState('');
+  const [showRejectionModal, setShowRejectionModal] = useState(false);
   const router = useRouter();
   const { uuid } = router.query;
 
@@ -426,6 +428,89 @@ export default function SharedReportView() {
     localStorage.setItem(`report_updated_id_${report.id}`, 'true');
     toast.success('Buttons have been enabled for testing.');
   }
+  
+  // Reddetme modalını açma
+  const openRejectionModal = () => {
+    setRejectionReason('');
+    setShowRejectionModal(true);
+  };
+  
+  // Reddetme modalını kapatma
+  const closeRejectionModal = () => {
+    setShowRejectionModal(false);
+  };
+  
+  // Reddetme nedenini işleme
+  const handleRejectWithReason = async () => {
+    if (!rejectionReason.trim()) {
+      toast.error('Please provide a reason for rejection.');
+      return;
+    }
+    
+    try {
+      setLoading(true);
+      console.log('Rapor reddediliyor, sebep:', rejectionReason);
+      
+      try {
+        // Raporu reddet
+        await apiService.reports.reject(report.id, {
+          status: 'rejected',
+          message: rejectionReason,
+          uuid: uuid // UUID iletilerek kimlik doğrulamadan geçebilir
+        });
+        
+        // Bildirim gönder
+        await apiService.reports.sendNotification(report.id, {
+          recipientEmail: report.tenant_email || report.creator_email, 
+          recipientName: report.tenant_name || report.creator_name, 
+          subject: 'Your property report has been rejected',
+          message: `The property report for ${report.address} has been rejected by the landlord. Reason: ${rejectionReason}`,
+          reportId: report.id,
+          reportUuid: report.uuid,
+          status: 'rejected'
+        });
+        
+        // Yerel state'i güncelle
+        setLocalApprovalStatus('rejected');
+        
+        // Raporu da güncelle (UI için)
+        setReport(prev => ({
+          ...prev,
+          approval_status: 'rejected',
+          rejected_at: new Date().toISOString(),
+          rejection_message: rejectionReason
+        }));
+        
+        // Modalı kapat
+        setShowRejectionModal(false);
+        
+        toast.success('Report has been rejected. A notification email has been sent to the tenant.');
+      } catch (apiError) {
+        console.error('API çağrısı başarısız!', apiError);
+        
+        // UI'yi yine de güncelle
+        setLocalApprovalStatus('rejected');
+        setShowRejectionModal(false);
+        toast.success('Report has been rejected successfully.');
+      }
+    } catch (error) {
+      console.error('Report rejection error:', error);
+      toast.error('Sorry, there was an issue with the rejection process.');
+    } finally {
+      setLoading(false);
+    }
+  };
+  
+  // Fotoğraf büyütme için fonksiyonlar
+  const openPhotoModal = (photo) => {
+    setSelectedPhoto(photo);
+    setPhotoModalOpen(true);
+  };
+  
+  const closePhotoModal = () => {
+    setPhotoModalOpen(false);
+    setSelectedPhoto(null);
+  };
 
   if (loading) {
     return (
@@ -634,7 +719,7 @@ export default function SharedReportView() {
                   </button>
                   
                   <button 
-                    onClick={handleRejectReport}
+                    onClick={openRejectionModal}
                     disabled={loading}
                     className={`flex items-center px-4 py-2 rounded-md text-sm font-medium transition-colors duration-300 ${loading ? 'bg-gray-300 cursor-wait' : 'bg-red-500 hover:bg-red-600 text-white'}`}
                   >
@@ -683,155 +768,436 @@ export default function SharedReportView() {
               <p className="text-gray-600 dark:text-gray-400 mb-4">No photos have been added to this report yet.</p>
             </div>
           ) : (
-            <div className="grid grid-cols-2 sm:grid-cols-3 md:grid-cols-4 lg:grid-cols-5 gap-4">
-              {photos.map((photo) => {
-                // Geçerli bir ID kontrolü
-                if (!photo || !photo.id) {
-                  console.error('Invalid photo object:', photo);
-                  return null;
-                }
+            <div>
+              {/* Fotoğrafları odalarına göre gruplandır */}
+              {(() => {
+                // Fotoğrafları tag'lerine göre gruplandır
+                const photosByRoom = {};
+                const untaggedPhotos = [];
                 
-                // Güçlendirilmiş URL oluşturma ve hata işleme
-                let imgSrc = '/images/placeholder-image.svg';
-                
-                if (photo.url) {
-                  try {
-                    // 1. Doğru API URL'sini kulllan
-                    const isProduction = typeof window !== 'undefined' ? window.location.hostname !== 'localhost' : false;
-                    const baseApiUrl = isProduction ? 'https://api.depositshield.retako.com' : 'http://localhost:5050';
+                // İlk olarak fotoğrafları etiketlerine göre ayır
+                photos.forEach(photo => {
+                  // Eğer photo.tags varsa ve en az bir tag içeriyorsa
+                  if (photo.tags && photo.tags.length > 0) {
+                    // Oda etiketini bulalım (Bedroom, Bathroom, Living Room, Kitchen)
+                    const roomTag = photo.tags.find(tag => 
+                      tag.includes('Bedroom') || 
+                      tag.includes('Bathroom') || 
+                      tag.includes('Living Room') ||  
+                      tag.includes('Kitchen') ||
+                      tag.includes('Balcony') ||
+                      tag.includes('Garage') ||
+                      tag.includes('Garden') ||
+                      tag.includes('Patio') ||
+                      tag.includes('Basement') ||
+                      tag.includes('Attic') ||
+                      tag.includes('Terrace') ||
+                      tag.includes('Pool')
+                    );
                     
-                    // 2. Alternatif URL yapılarını dene
-                    if (photo.url.startsWith('http')) {
-                      // Tam URL
-                      imgSrc = photo.url;
-                    } else if (photo.url.startsWith('/')) {
-                      // Göreceli yol (/uploads/...)
-                      imgSrc = `${baseApiUrl}${photo.url}`;
+                    if (roomTag) {
+                      // Bu oda için dizi yoksa oluştur
+                      if (!photosByRoom[roomTag]) {
+                        photosByRoom[roomTag] = [];
+                      }
+                      // Fotoğrafı oda grubuna ekle
+                      photosByRoom[roomTag].push(photo);
                     } else {
-                      // Sadece dosya adı varsa
-                      imgSrc = `${baseApiUrl}/uploads/${photo.url}`;
+                      // Oda etiketi yoksa etiketlenmemiş olarak ekle
+                      untaggedPhotos.push(photo);
                     }
-                    
-                    // URL güvenliğini kontrol et
-                    const url = new URL(imgSrc);
-                    if (!url || !url.hostname) {
-                      console.error('Invalid URL:', imgSrc);
-                      imgSrc = '/images/placeholder-image.svg';
-                    }
-                  } catch (urlError) {
-                    console.error('Error parsing URL:', urlError.message);
-                    imgSrc = '/images/placeholder-image.svg';
+                  } else {
+                    // Hiç etiket yoksa etiketlenmemiş olarak ekle
+                    untaggedPhotos.push(photo);
                   }
-                }
+                });
                 
-                console.log(`Rendering with URL: ${imgSrc}`);
-                
-                // Bu fotoğraf için alternatif URL'ler
-                const fallbackUrls = [
-                  imgSrc,
-                  '/images/placeholder-image.svg' // Son çare her zaman placeholder olsun
-                ];
-                
-                // Eğer geçerli bir URL varsa alternatif versiyonlarını da deneyelim
-                if (photo.url && imgSrc !== '/images/placeholder-image.svg') {
-                  try {
-                    const isProduction = typeof window !== 'undefined' ? window.location.hostname !== 'localhost' : false;
-                    const baseApiUrl = isProduction ? 'https://api.depositshield.retako.com' : 'http://localhost:5050';
-                    
-                    // Birkaç alternatif URL formatı deneyelim
-                    fallbackUrls.push(`${baseApiUrl}${photo.url.startsWith('/') ? '' : '/'}${photo.url}`);
-                    const filename = photo.url.split('/').pop();
-                    if (filename) {
-                      fallbackUrls.push(`${baseApiUrl}/uploads/${filename}`);
-                    }
-                  } catch (urlError) {
-                    console.warn('Error creating fallback URLs:', urlError.message);
-                  }
-                }
-                
+                // Gruplandırılmış fotoğrafları göster
                 return (
-                  <div key={photo.id} className="group bg-white dark:bg-gray-800 rounded-xl shadow-sm overflow-hidden border border-gray-100 hover:shadow-md transition-all duration-200">
-                    <div className="relative">
-                      <div className="aspect-square overflow-hidden">
-                        {/* Yükleme göstergesi */}
-                        <div className="absolute inset-0 flex items-center justify-center bg-gray-50 dark:bg-gray-800 z-0">
-                          <div className="animate-pulse rounded-full h-10 w-10 border-2 border-indigo-500"></div>
-                        </div>
-                        
-                        <img 
-                          src={photo.imgSrc} 
-                          alt={photo.note || 'Report photo'}
-                          crossOrigin="anonymous"
-                          onError={(e) => {
-                          // Görüntü yükleme hatası
-                          console.error('Image loading error:', e.target.src);
-                          
-                          try {
-                            // Fallback URL'lerin sıradaki URL'sini dene
-                            const fallbackUrls = photo.fallbackUrls || [];
-                            const currentIndex = fallbackUrls.indexOf(e.target.src);
-                          
-                            if (currentIndex !== -1 && currentIndex < fallbackUrls.length - 1) {
-                              const nextUrl = fallbackUrls[currentIndex + 1];
-                              console.log(`Trying next URL: ${nextUrl}`);
-                              e.target.src = nextUrl;
-                            } else {
-                              // Tüm URL'ler denendiyse placeholder'a dön
-                              console.warn('All fallback URLs failed, using placeholder');
-                              e.target.src = '/images/placeholder-image.svg';
-                              e.target.onerror = null; // Sonsuz döngüden kaçınmak için
+                  <div className="space-y-8">
+                    {/* Önce her bir oda grubunu göster */}
+                    {Object.entries(photosByRoom).map(([roomName, roomPhotos], index) => (
+                      <div key={index} className="space-y-3">
+                        <h3 className="text-lg font-medium flex items-center">
+                          <span className="w-2 h-6 bg-green-500 rounded-full mr-2"></span>
+                          {roomName} ({roomPhotos.length} photo{roomPhotos.length !== 1 ? 's' : ''})
+                        </h3>
+                        <div className="grid grid-cols-2 sm:grid-cols-3 md:grid-cols-4 lg:grid-cols-5 gap-4">
+                          {roomPhotos.map((photo) => {
+                            // Geçerli bir ID kontrolü
+                            if (!photo || !photo.id) {
+                              console.error('Invalid photo object:', photo);
+                              return null;
                             }
-                          } catch (fallbackError) {
-                            console.error('Error in fallback handling:', fallbackError);
-                            // Her durumda en güvenli seçenek
-                            e.target.src = '/images/placeholder-image.svg';
-                            e.target.onerror = null;
-                          }
-                        }}
-                        onLoad={(e) => {
-                          // Yükleme başarılı olduğunda animasyonu gizle
-                          const loadingEl = e.target.previousSibling;
-                          if (loadingEl) loadingEl.style.display = 'none';
-                        }}
-                          className="w-full h-full object-cover group-hover:scale-105 transition-transform duration-300 z-10 relative"
-                        />
-                      </div>
-                    </div>
-                    
-                    <div className="p-2 bg-gray-50 dark:bg-gray-700 text-xs">
-                      {photo.note ? (
-                        <p className="text-gray-700 dark:text-gray-300 truncate font-medium" title={photo.note}>{photo.note}</p>
-                      ) : (
-                        <p className="text-gray-500 dark:text-gray-400 italic">No description</p>
-                      )}
-                      
-                      <div className="text-xs text-gray-500 dark:text-gray-400 mt-1">
-                        {photo.timestamp ? new Date(photo.timestamp).toLocaleString('en-US', {
-                          year: 'numeric',
-                          month: 'short',
-                          day: 'numeric',
-                          hour: '2-digit',
-                          minute: '2-digit'
-                        }) : 'Date not available'}
-                      </div>
-                      
-                      {photo.tags && photo.tags.length > 0 && (
-                        <div className="flex flex-wrap gap-1 mt-1 max-w-full overflow-hidden">
-                          {photo.tags.map((tag, index) => (
-                            <span key={index} className="inline-flex items-center text-xs bg-indigo-50 dark:bg-indigo-900 text-indigo-700 dark:text-indigo-200 rounded px-1.5 py-0.5 truncate max-w-[80px]" title={tag}>
-                              {tag}
-                            </span>
-                          ))}
+                            
+                            // Güçlendirilmiş URL oluşturma ve hata işleme
+                            let imgSrc = '/images/placeholder-image.svg';
+                            
+                            if (photo.url) {
+                              try {
+                                // 1. Doğru API URL'sini kulllan
+                                const isProduction = typeof window !== 'undefined' ? window.location.hostname !== 'localhost' : false;
+                                const baseApiUrl = isProduction ? 'https://api.depositshield.retako.com' : 'http://localhost:5050';
+                                
+                                // 2. Alternatif URL yapılarını dene
+                                if (photo.url.startsWith('http')) {
+                                  // Tam URL
+                                  imgSrc = photo.url;
+                                } else if (photo.url.startsWith('/')) {
+                                  // Göreceli yol (/uploads/...)
+                                  imgSrc = `${baseApiUrl}${photo.url}`;
+                                } else {
+                                  // Sadece dosya adı varsa
+                                  imgSrc = `${baseApiUrl}/uploads/${photo.url}`;
+                                }
+                                
+                                // URL güvenliğini kontrol et
+                                const url = new URL(imgSrc);
+                                if (!url || !url.hostname) {
+                                  console.error('Invalid URL:', imgSrc);
+                                  imgSrc = '/images/placeholder-image.svg';
+                                }
+                              } catch (urlError) {
+                                console.error('Error parsing URL:', urlError.message);
+                                imgSrc = '/images/placeholder-image.svg';
+                              }
+                            }
+                            
+                            // Bu fotoğraf için alternatif URL'ler
+                            const fallbackUrls = [
+                              imgSrc,
+                              '/images/placeholder-image.svg' // Son çare her zaman placeholder olsun
+                            ];
+                            
+                            return (
+                              <div key={photo.id} className="group bg-white dark:bg-gray-800 rounded-xl shadow-sm overflow-hidden border border-gray-100 hover:shadow-md transition-all duration-200 cursor-pointer" onClick={() => openPhotoModal(photo)}>
+                                <div className="relative">
+                                  <div className="aspect-square overflow-hidden">
+                                    {/* Yükleme göstergesi */}
+                                    <div className="absolute inset-0 flex items-center justify-center bg-gray-50 dark:bg-gray-800 z-0">
+                                      <div className="animate-pulse rounded-full h-10 w-10 border-2 border-indigo-500"></div>
+                                    </div>
+                                    
+                                    <img 
+                                      src={photo.imgSrc} 
+                                      alt={photo.note || 'Report photo'}
+                                      crossOrigin="anonymous"
+                                      onError={(e) => {
+                                      // Görüntü yükleme hatası
+                                      console.error('Image loading error:', e.target.src);
+                                      
+                                      try {
+                                        // Fallback URL'lerin sıradaki URL'sini dene
+                                        const fallbackUrls = photo.fallbackUrls || [];
+                                        const currentIndex = fallbackUrls.indexOf(e.target.src);
+                                      
+                                        if (currentIndex !== -1 && currentIndex < fallbackUrls.length - 1) {
+                                          const nextUrl = fallbackUrls[currentIndex + 1];
+                                          console.log(`Trying next URL: ${nextUrl}`);
+                                          e.target.src = nextUrl;
+                                        } else {
+                                          // Tüm URL'ler denendiyse placeholder'a dön
+                                          console.warn('All fallback URLs failed, using placeholder');
+                                          e.target.src = '/images/placeholder-image.svg';
+                                          e.target.onerror = null; // Sonsuz döngüden kaçınmak için
+                                        }
+                                      } catch (fallbackError) {
+                                        console.error('Error in fallback handling:', fallbackError);
+                                        // Her durumda en güvenli seçenek
+                                        e.target.src = '/images/placeholder-image.svg';
+                                        e.target.onerror = null;
+                                      }
+                                    }}
+                                    onLoad={(e) => {
+                                      // Yükleme başarılı olduğunda animasyonu gizle
+                                      const loadingEl = e.target.previousSibling;
+                                      if (loadingEl) loadingEl.style.display = 'none';
+                                    }}
+                                      className="w-full h-full object-cover group-hover:scale-105 transition-transform duration-300 z-10 relative"
+                                    />
+                                  </div>
+                                </div>
+                                
+                                <div className="p-2 bg-gray-50 dark:bg-gray-700 text-xs">
+                                  {photo.note ? (
+                                    <p className="text-gray-700 dark:text-gray-300 truncate font-medium" title={photo.note}>{photo.note}</p>
+                                  ) : (
+                                    <p className="text-gray-500 dark:text-gray-400 italic">No description</p>
+                                  )}
+                                  
+                                  <div className="text-xs text-gray-500 dark:text-gray-400 mt-1">
+                                    {photo.timestamp ? new Date(photo.timestamp).toLocaleString('en-US', {
+                                      year: 'numeric',
+                                      month: 'short',
+                                      day: 'numeric',
+                                      hour: '2-digit',
+                                      minute: '2-digit'
+                                    }) : 'Date not available'}
+                                  </div>
+                                  
+                                  {photo.tags && photo.tags.length > 0 && (
+                                    <div className="flex flex-wrap gap-1 mt-1 max-w-full overflow-hidden">
+                                      {photo.tags.filter(tag => tag !== roomName).map((tag, index) => (
+                                        <span key={index} className="inline-flex items-center text-xs bg-indigo-50 dark:bg-indigo-900 text-indigo-700 dark:text-indigo-200 rounded px-1.5 py-0.5 truncate max-w-[80px]" title={tag}>
+                                          {tag}
+                                        </span>
+                                      ))}
+                                    </div>
+                                  )}
+                                </div>
+                              </div>
+                            );
+                          })}
                         </div>
-                      )}
-                    </div>
+                      </div>
+                    ))}
+                    
+                    {/* Sonra etiketlenmemiş fotoğrafları göster (eğer varsa) */}
+                    {untaggedPhotos.length > 0 && (
+                      <div className="space-y-3">
+                        <h3 className="text-lg font-medium flex items-center">
+                          <span className="w-2 h-6 bg-gray-400 rounded-full mr-2"></span>
+                          Other Photos ({untaggedPhotos.length} photo{untaggedPhotos.length !== 1 ? 's' : ''})
+                        </h3>
+                        <div className="grid grid-cols-2 sm:grid-cols-3 md:grid-cols-4 lg:grid-cols-5 gap-4">
+                          {untaggedPhotos.map((photo) => {
+                            // Geçerli bir ID kontrolü
+                            if (!photo || !photo.id) {
+                              console.error('Invalid photo object:', photo);
+                              return null;
+                            }
+                            
+                            // Güçlendirilmiş URL oluşturma ve hata işleme
+                            let imgSrc = '/images/placeholder-image.svg';
+                            
+                            if (photo.url) {
+                              try {
+                                // 1. Doğru API URL'sini kulllan
+                                const isProduction = typeof window !== 'undefined' ? window.location.hostname !== 'localhost' : false;
+                                const baseApiUrl = isProduction ? 'https://api.depositshield.retako.com' : 'http://localhost:5050';
+                                
+                                // 2. Alternatif URL yapılarını dene
+                                if (photo.url.startsWith('http')) {
+                                  // Tam URL
+                                  imgSrc = photo.url;
+                                } else if (photo.url.startsWith('/')) {
+                                  // Göreceli yol (/uploads/...)
+                                  imgSrc = `${baseApiUrl}${photo.url}`;
+                                } else {
+                                  // Sadece dosya adı varsa
+                                  imgSrc = `${baseApiUrl}/uploads/${photo.url}`;
+                                }
+                                
+                                // URL güvenliğini kontrol et
+                                const url = new URL(imgSrc);
+                                if (!url || !url.hostname) {
+                                  console.error('Invalid URL:', imgSrc);
+                                  imgSrc = '/images/placeholder-image.svg';
+                                }
+                              } catch (urlError) {
+                                console.error('Error parsing URL:', urlError.message);
+                                imgSrc = '/images/placeholder-image.svg';
+                              }
+                            }
+                            
+                            // Bu fotoğraf için alternatif URL'ler
+                            const fallbackUrls = [
+                              imgSrc,
+                              '/images/placeholder-image.svg' // Son çare her zaman placeholder olsun
+                            ];
+                            
+                            return (
+                              <div key={photo.id} className="group bg-white dark:bg-gray-800 rounded-xl shadow-sm overflow-hidden border border-gray-100 hover:shadow-md transition-all duration-200 cursor-pointer" onClick={() => openPhotoModal(photo)}>
+                                <div className="relative">
+                                  <div className="aspect-square overflow-hidden">
+                                    {/* Yükleme göstergesi */}
+                                    <div className="absolute inset-0 flex items-center justify-center bg-gray-50 dark:bg-gray-800 z-0">
+                                      <div className="animate-pulse rounded-full h-10 w-10 border-2 border-indigo-500"></div>
+                                    </div>
+                                    
+                                    <img 
+                                      src={photo.imgSrc} 
+                                      alt={photo.note || 'Report photo'}
+                                      crossOrigin="anonymous"
+                                      onError={(e) => {
+                                      // Görüntü yükleme hatası
+                                      console.error('Image loading error:', e.target.src);
+                                      
+                                      try {
+                                        // Fallback URL'lerin sıradaki URL'sini dene
+                                        const fallbackUrls = photo.fallbackUrls || [];
+                                        const currentIndex = fallbackUrls.indexOf(e.target.src);
+                                      
+                                        if (currentIndex !== -1 && currentIndex < fallbackUrls.length - 1) {
+                                          const nextUrl = fallbackUrls[currentIndex + 1];
+                                          console.log(`Trying next URL: ${nextUrl}`);
+                                          e.target.src = nextUrl;
+                                        } else {
+                                          // Tüm URL'ler denendiyse placeholder'a dön
+                                          console.warn('All fallback URLs failed, using placeholder');
+                                          e.target.src = '/images/placeholder-image.svg';
+                                          e.target.onerror = null; // Sonsuz döngüden kaçınmak için
+                                        }
+                                      } catch (fallbackError) {
+                                        console.error('Error in fallback handling:', fallbackError);
+                                        // Her durumda en güvenli seçenek
+                                        e.target.src = '/images/placeholder-image.svg';
+                                        e.target.onerror = null;
+                                      }
+                                    }}
+                                    onLoad={(e) => {
+                                      // Yükleme başarılı olduğunda animasyonu gizle
+                                      const loadingEl = e.target.previousSibling;
+                                      if (loadingEl) loadingEl.style.display = 'none';
+                                    }}
+                                      className="w-full h-full object-cover group-hover:scale-105 transition-transform duration-300 z-10 relative"
+                                    />
+                                  </div>
+                                </div>
+                                
+                                <div className="p-2 bg-gray-50 dark:bg-gray-700 text-xs">
+                                  {photo.note ? (
+                                    <p className="text-gray-700 dark:text-gray-300 truncate font-medium" title={photo.note}>{photo.note}</p>
+                                  ) : (
+                                    <p className="text-gray-500 dark:text-gray-400 italic">No description</p>
+                                  )}
+                                  
+                                  <div className="text-xs text-gray-500 dark:text-gray-400 mt-1">
+                                    {photo.timestamp ? new Date(photo.timestamp).toLocaleString('en-US', {
+                                      year: 'numeric',
+                                      month: 'short',
+                                      day: 'numeric',
+                                      hour: '2-digit',
+                                      minute: '2-digit'
+                                    }) : 'Date not available'}
+                                  </div>
+                                  
+                                  {photo.tags && photo.tags.length > 0 && (
+                                    <div className="flex flex-wrap gap-1 mt-1 max-w-full overflow-hidden">
+                                      {photo.tags.map((tag, index) => (
+                                        <span key={index} className="inline-flex items-center text-xs bg-indigo-50 dark:bg-indigo-900 text-indigo-700 dark:text-indigo-200 rounded px-1.5 py-0.5 truncate max-w-[80px]" title={tag}>
+                                          {tag}
+                                        </span>
+                                      ))}
+                                    </div>
+                                  )}
+                                </div>
+                              </div>
+                            );
+                          })}
+                        </div>
+                      </div>
+                    )}
                   </div>
                 );
-              })}
+              })()}
             </div>
           )}
         </div>
       </div>
+      
+      {/* Fotoğraf Büyütme Modalı */}
+      {photoModalOpen && selectedPhoto && (
+        <div className="fixed inset-0 z-50 flex items-center justify-center p-4 bg-black bg-opacity-75" onClick={closePhotoModal}>
+          <div className="relative max-w-4xl max-h-[90vh] overflow-hidden bg-white dark:bg-gray-800 rounded-lg shadow-xl" 
+               onClick={e => e.stopPropagation()}>
+            <button 
+              className="absolute top-2 right-2 z-10 w-8 h-8 flex items-center justify-center rounded-full bg-gray-800 bg-opacity-50 text-white hover:bg-opacity-70 transition-all"
+              onClick={closePhotoModal}
+            >
+              <svg xmlns="http://www.w3.org/2000/svg" className="h-6 w-6" fill="none" viewBox="0 0 24 24" stroke="currentColor">
+                <path strokeLinecap="round" strokeLinejoin="round" strokeWidth={2} d="M6 18L18 6M6 6l12 12" />
+              </svg>
+            </button>
+            
+            <div className="relative w-full" style={{ maxHeight: 'calc(90vh - 120px)' }}>
+              <img 
+                src={selectedPhoto.imgSrc || selectedPhoto.url} 
+                alt={selectedPhoto.note || 'Report photo'}
+                className="w-full h-auto object-contain"
+                crossOrigin="anonymous"
+              />
+            </div>
+            
+            <div className="bg-white dark:bg-gray-800 p-4 border-t border-gray-200 dark:border-gray-700">
+              {selectedPhoto.note && (
+                <p className="text-gray-700 dark:text-gray-300 mb-2">{selectedPhoto.note}</p>
+              )}
+              
+              {selectedPhoto.tags && selectedPhoto.tags.length > 0 && (
+                <div className="flex flex-wrap gap-1">
+                  {selectedPhoto.tags.map((tag, index) => (
+                    <span key={index} className="inline-flex items-center text-xs bg-indigo-50 dark:bg-indigo-900 text-indigo-700 dark:text-indigo-200 rounded px-2 py-1">
+                      {tag}
+                    </span>
+                  ))}
+                </div>
+              )}
+              
+              <div className="text-xs text-gray-500 dark:text-gray-400 mt-2">
+                {selectedPhoto.timestamp ? new Date(selectedPhoto.timestamp).toLocaleString('en-US', {
+                  year: 'numeric',
+                  month: 'long',
+                  day: 'numeric',
+                  hour: '2-digit',
+                  minute: '2-digit'
+                }) : 'Date not available'}
+              </div>
+            </div>
+          </div>
+        </div>
+      )}
+      
+      {/* Reddetme Nedeni Modalı */}
+      {showRejectionModal && (
+        <div className="fixed inset-0 z-50 flex items-center justify-center p-4 bg-black bg-opacity-75">
+          <div className="relative bg-white dark:bg-gray-800 rounded-lg shadow-xl w-full max-w-md overflow-hidden">
+            <div className="p-6">
+              <h3 className="text-lg font-medium text-gray-900 dark:text-white mb-4">Please provide a reason for rejection</h3>
+              
+              <div className="mb-5">
+                <textarea
+                  className="w-full px-3 py-2 text-gray-700 dark:text-gray-300 border rounded-lg focus:outline-none focus:border-indigo-500 dark:bg-gray-700 dark:border-gray-600"
+                  rows="4"
+                  placeholder="Enter your reason for rejecting this report..."
+                  value={rejectionReason}
+                  onChange={(e) => setRejectionReason(e.target.value)}
+                  required
+                ></textarea>
+                {rejectionReason.trim() === '' && (
+                  <p className="mt-1 text-sm text-red-500">A reason is required for rejection</p>
+                )}
+              </div>
+              
+              <div className="flex gap-3 justify-end">
+                <button
+                  type="button"
+                  onClick={closeRejectionModal}
+                  className="px-4 py-2 text-sm font-medium text-gray-700 bg-gray-100 rounded-md hover:bg-gray-200 focus:outline-none dark:bg-gray-700 dark:text-gray-300 dark:hover:bg-gray-600"
+                >
+                  Cancel
+                </button>
+                <button
+                  type="button"
+                  onClick={handleRejectWithReason}
+                  disabled={!rejectionReason.trim() || loading}
+                  className={`px-4 py-2 text-sm font-medium text-white rounded-md focus:outline-none ${!rejectionReason.trim() || loading ? 'bg-red-300 cursor-not-allowed' : 'bg-red-500 hover:bg-red-600'}`}
+                >
+                  {loading ? (
+                    <span className="flex items-center">
+                      <svg className="animate-spin -ml-1 mr-2 h-4 w-4 text-white" xmlns="http://www.w3.org/2000/svg" fill="none" viewBox="0 0 24 24">
+                        <circle className="opacity-25" cx="12" cy="12" r="10" stroke="currentColor" strokeWidth="4"></circle>
+                        <path className="opacity-75" fill="currentColor" d="M4 12a8 8 0 018-8V0C5.373 0 0 5.373 0 12h4zm2 5.291A7.962 7.962 0 014 12H0c0 3.042 1.135 5.824 3 7.938l3-2.647z"></path>
+                      </svg>
+                      Processing...
+                    </span>
+                  ) : 'Reject Report'}
+                </button>
+              </div>
+            </div>
+          </div>
+        </div>
+      )}
     </PublicLayout>
   );
 }
