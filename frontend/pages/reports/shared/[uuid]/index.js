@@ -5,6 +5,7 @@ import { toast } from 'react-toastify';
 import PublicLayout from '../../../../components/PublicLayout';
 import { apiService } from '../../../../lib/apiWrapper'; // Debugging wrapper
 import { processSharedReportPhotos } from '../../../../lib/helpers/photoHelper'; // Import photo processing helper
+import { generateSharedReportPDF } from '../../../../lib/simplePdfGenerator';
 
 // API base URL - doğru değerlerle güncelleyelim
 const API_URL = typeof window !== 'undefined' 
@@ -30,6 +31,33 @@ export default function SharedReportView() {
   const [showRejectionModal, setShowRejectionModal] = useState(false);
   const router = useRouter();
   const { uuid } = router.query;
+
+  // Fotoğraf yüklemeleri için yardımcı fonksiyon
+  const fetchImageAsBase64 = async (imageUrl) => {
+    try {
+      console.log('Fetching image:', imageUrl);
+      const response = await fetch(imageUrl, {
+        mode: 'cors',
+        cache: 'no-cache',
+        headers: { 'Accept': 'image/jpeg, image/png, image/*' }
+      });
+      
+      if (!response.ok) {
+        throw new Error(`Image fetch failed: ${response.status}`);
+      }
+      
+      const blob = await response.blob();
+      return new Promise((resolve, reject) => {
+        const reader = new FileReader();
+        reader.onloadend = () => resolve(reader.result);
+        reader.onerror = reject;
+        reader.readAsDataURL(blob);
+      });
+    } catch (error) {
+      console.error('Error fetching image as base64:', error);
+      return null; // Return null on error
+    }
+  };
 
   useEffect(() => {
     if (uuid) {
@@ -518,256 +546,141 @@ export default function SharedReportView() {
   const generatePDF = async () => {
     try {
       setGeneratingPdf(true);
-      toast.info('Preparing PDF report...');
+      toast.info('PDF hazırlanıyor...');
+
+      console.log('Starting PDF generation with:', {
+        report: report ? { id: report.id, uuid: report.uuid, title: report.title } : 'No report',
+        photosCount: photos ? photos.length : 'No photos',
+        localApprovalStatus
+      });
 
       // Dinamik olarak jsPDF modülünü import et
-      const { jsPDF } = await import('jspdf');
+      const jspdfModule = await import('jspdf');
+      const { jsPDF } = jspdfModule;
       
-      // Yeni bir PDF dokümanı oluştur
-      const pdf = new jsPDF({
-        orientation: 'portrait',
-        unit: 'mm',
-        format: 'a4',
-        compress: true
-      });
+      // Önce basit bir PDF oluşturarak test et
+      const testPdf = new jsPDF();
+      testPdf.text('Test PDF Generation', 10, 10);
+      console.log('Test PDF created successfully');
       
-      // Font boyutları ve kenar boşlukları
-      const pageWidth = 210;
-      const margin = 20;
-      const contentWidth = pageWidth - 2 * margin;
-      const titleFontSize = 18;
-      const subtitleFontSize = 14;
-      const normalFontSize = 11;
-      const smallFontSize = 9;
-      const lineHeight = 7;
-      let yPosition = margin;
-      
-      // Logo (varsayılan olarak metnin içine logo yerleştirme)
-      pdf.setFontSize(20);
-      pdf.setFont('helvetica', 'bold');
-      pdf.setTextColor(59, 130, 246); // Indigo renginde logo metni
-      pdf.text('DepositShield', margin, yPosition + 10);
-      yPosition += 15;
-      
-      // Çizgi ekle
-      pdf.setDrawColor(200, 200, 200);
-      pdf.line(margin, yPosition, pageWidth - margin, yPosition);
-      yPosition += 10;
-      
-      // Rapor başlığı
-      pdf.setFontSize(titleFontSize);
-      pdf.setFont('helvetica', 'bold');
-      pdf.setTextColor(0, 0, 0);
-      
-      const reportTitle = `Property Report: ${report.title || 'Shared Report'}`;
-      pdf.text(reportTitle, margin, yPosition);
-      yPosition += 12;
-      
-      // Rapor alt başlığı
-      pdf.setFontSize(subtitleFontSize);
-      pdf.setFont('helvetica', 'normal');
-      let reportTypeLabel = 'General Observation';
-      
-      if (report.type) {
-        switch(report.type) {
-          case 'move-in':
-            reportTypeLabel = 'Pre-Move-In Report';
-            break;
-          case 'move-out':
-            reportTypeLabel = 'Post-Move-Out Report';
-            break;
-        }
-      }
-      
-      pdf.text(reportTypeLabel, margin, yPosition);
-      yPosition += lineHeight * 2;
-      
-      // Rapor paylaşım bilgisi
-      pdf.setFontSize(smallFontSize);
-      pdf.setFont('helvetica', 'italic');
-      pdf.setTextColor(100, 100, 100);
-      pdf.text('This is a shared report document', margin, yPosition);
-      yPosition += lineHeight * 1.5;
-      
-      // Rapor onay durumu
-      if (report.approval_status || localApprovalStatus) {
-        pdf.setFontSize(normalFontSize);
-        pdf.setFont('helvetica', 'bold');
-        
-        let statusLabel = '';
-        let actualStatus = report.approval_status || localApprovalStatus;
-        
-        if (actualStatus === 'approved') {
-          pdf.setTextColor(0, 128, 0); // Yeşil
-          statusLabel = 'APPROVED BY LANDLORD';
-        } else if (actualStatus === 'rejected') {
-          pdf.setTextColor(220, 0, 0); // Kırmızı
-          statusLabel = 'REJECTED BY LANDLORD';
+      // Asıl PDF oluşturmayı dene
+      try {
+        // Veri kontrolü
+        if (!report) {
+          throw new Error('Report data is missing');
         }
         
-        if (statusLabel) {
-          pdf.text(statusLabel, margin, yPosition);
-          yPosition += lineHeight;
-          
-          // Onay/ret tarihi
-          if (report.approved_at || report.rejected_at) {
-            pdf.setFontSize(smallFontSize);
-            pdf.setFont('helvetica', 'italic');
-            const dateStr = report.approved_at ? 
-              `Approved on ${new Date(report.approved_at).toLocaleDateString()}` : 
-              `Rejected on ${new Date(report.rejected_at).toLocaleDateString()}`;
-            pdf.text(dateStr, margin, yPosition);
-            yPosition += lineHeight;
-          }
-          
-          // Ret nedeni
-          if (actualStatus === 'rejected' && report.rejection_message) {
-            pdf.setFontSize(smallFontSize);
-            pdf.setFont('helvetica', 'italic');
-            pdf.setTextColor(128, 0, 0);
-            pdf.text('Rejection Reason:', margin, yPosition);
-            yPosition += lineHeight - 2;
-            
-            // Ret nedeni için uzun metin işlemesi
-            const maxWidth = contentWidth;
-            const splitText = pdf.splitTextToSize(report.rejection_message, maxWidth);
-            pdf.text(splitText, margin, yPosition);
-            yPosition += splitText.length * (lineHeight - 2);
-          }
-        }
+        // Fotoğraf resimlerini hazırla
+        let enhancedPhotos = [];
+        if (photos && photos.length > 0) {
+        console.log('Processing photos for PDF...');
         
-        yPosition += lineHeight;
-      }
-      
-      // Adres bilgisi
-      pdf.setFontSize(normalFontSize);
-      pdf.setFont('helvetica', 'bold');
-      pdf.setTextColor(80, 80, 80);
-      pdf.text('Property Address:', margin, yPosition);
-      yPosition += lineHeight;
-      
-      pdf.setFont('helvetica', 'normal');
-      pdf.setTextColor(0, 0, 0);
-      pdf.text(report.address || 'Address not available', margin, yPosition);
-      yPosition += lineHeight * 2;
-      
-      // Tarih bilgisi
-      pdf.setFontSize(normalFontSize);
-      pdf.setFont('helvetica', 'bold');
-      pdf.setTextColor(80, 80, 80);
-      pdf.text('Report Date:', margin, yPosition);
-      yPosition += lineHeight;
-      
-      pdf.setFont('helvetica', 'normal');
-      pdf.setTextColor(0, 0, 0);
-      const formattedDate = report.created_at ? 
-        new Date(report.created_at).toLocaleDateString('en-US', {
-          year: 'numeric',
-          month: 'long',
-          day: 'numeric'
-        }) : 'Date not available';
-      pdf.text(formattedDate, margin, yPosition);
-      yPosition += lineHeight * 1.5;
-      
-      // Oluşturan bilgisi
-      if (report.creator_name) {
-        pdf.setFontSize(normalFontSize);
-        pdf.setFont('helvetica', 'bold');
-        pdf.setTextColor(80, 80, 80);
-        pdf.text('Created By:', margin, yPosition);
-        yPosition += lineHeight;
+        // Her türlü oda için fotoğrafları işle
+        const photoMap = new Map();
+        for (let photo of photos) {
+          try {
+            if (photo && photo.url) {
+            const isProduction = typeof window !== 'undefined' ? window.location.hostname !== 'localhost' : false;
+          const baseApiUrl = isProduction ? 'https://api.depositshield.retako.com' : 'http://localhost:5050';
         
-        pdf.setFont('helvetica', 'normal');
-        pdf.setTextColor(0, 0, 0);
-        pdf.text(report.creator_name, margin, yPosition);
-        yPosition += lineHeight * 2;
-      }
-      
-      // Kiracı bilgisi
-      if (report.tenant_name || report.tenant_email || report.creator_name || report.creator_email) {
-        pdf.setFontSize(normalFontSize);
-        pdf.setFont('helvetica', 'bold');
-        pdf.setTextColor(80, 80, 80);
-        pdf.text('Tenant Information:', margin, yPosition);
-        yPosition += lineHeight;
-        
-        pdf.setFont('helvetica', 'normal');
-        pdf.setTextColor(0, 0, 0);
-        
-        const name = report.tenant_name || report.creator_name || 'Not provided';
-        pdf.text(`Name: ${name}`, margin, yPosition);
-        yPosition += lineHeight;
-        
-        if (report.tenant_email || report.creator_email) {
-          const email = report.tenant_email || report.creator_email;
-          pdf.text(`Email: ${email}`, margin, yPosition);
-          yPosition += lineHeight;
-        }
-        
-        if (report.tenant_phone || report.creator_phone) {
-          const phone = report.tenant_phone || report.creator_phone;
-          pdf.text(`Phone: ${phone}`, margin, yPosition);
-          yPosition += lineHeight;
-        }
-        
-        yPosition += lineHeight;
-      }
-      
-      // Rapor açıklaması
-      if (report.description) {
-        pdf.setFontSize(normalFontSize);
-        pdf.setFont('helvetica', 'bold');
-        pdf.setTextColor(80, 80, 80);
-        pdf.text('Report Description:', margin, yPosition);
-        yPosition += lineHeight;
-        
-        pdf.setFont('helvetica', 'normal');
-        pdf.setTextColor(0, 0, 0);
-        
-        // Uzun açıklama için metin işleme
-        const maxWidth = contentWidth;
-        const splitText = pdf.splitTextToSize(report.description, maxWidth);
-        pdf.text(splitText, margin, yPosition);
-        yPosition += splitText.length * lineHeight;
-      }
-      
-      // Fotoğraf bilgisi ekle
-      if (photos.length > 0) {
-        // Yeni sayfaya geç eğer yeterli alan kalmadıysa
-        if (yPosition > 230) {
-          pdf.addPage();
-          yPosition = margin;
+        // URL'yi düzgün bir şekilde oluştur
+        let imgUrl = photo.url;
+        if (!imgUrl.startsWith('http')) {
+          if (imgUrl.startsWith('/')) {
+            imgUrl = `${baseApiUrl}${imgUrl}`;
         } else {
-          yPosition += lineHeight * 2;
+        imgUrl = `${baseApiUrl}/uploads/${imgUrl}`;
+        }
         }
         
-        pdf.setFontSize(subtitleFontSize);
-        pdf.setFont('helvetica', 'bold');
-        pdf.setTextColor(0, 0, 0);
-        pdf.text(`Photos (${photos.length})`, margin, yPosition);
-        yPosition += lineHeight * 1.5;
+        // Fotoğrafın ait olduğu odayı belirle
+        let roomType = 'Other';
+        if (photo.tags && photo.tags.length > 0) {
+          roomType = photo.tags[0];
+        }
         
-        pdf.setFontSize(smallFontSize);
-        pdf.setFont('helvetica', 'italic');
-        pdf.setTextColor(100, 100, 100);
-        pdf.text('* Photos can be viewed in the online report at depositshield.retako.com', margin, yPosition);
+        // Her oda türü için en fazla 2 fotoğraf işle
+        const existingCount = photoMap.get(roomType) || 0;
+        if (existingCount < 2) {
+          console.log(`Fetching image for ${roomType}:`, imgUrl);
+            const base64Image = await fetchImageAsBase64(imgUrl);
+              if (base64Image) {
+              photo.base64 = base64Image;
+                photoMap.set(roomType, existingCount + 1);
+                  enhancedPhotos.push(photo);
+                  console.log(`Successfully loaded image for ${roomType}`);
+                } else {
+                  console.log(`Failed to load image for ${roomType}`);
+                  }
+                  }
+                }
+              } catch (photoError) {
+                console.error('Error processing photo for PDF:', photoError);
+              }
+            }
+            
+            console.log('Enhanced photos with base64 data:', enhancedPhotos.length, 'from rooms:', [...photoMap.keys()]);
+          }
+
+        // Call enhanced PDF generation function
+        const pdf = await generateSharedReportPDF(report, enhancedPhotos, localApprovalStatus);
+        
+        if (!pdf) {
+          throw new Error('PDF generation returned null');
+        }
+        
+        // Güvenli dosya adı oluştur
+        const safeId = (report.id || uuid || 'unknown').toString().replace(/[^a-z0-9]/gi, '_');
+        const timestamp = new Date().toISOString().slice(0,10);
+        const filename = `DepositShield_Report_${safeId}_${timestamp}.pdf`;
+        
+        console.log('PDF generated, saving with filename:', filename);
+        
+        // Download the PDF
+        console.log('PDF generated successfully, starting download');
+        try {
+          pdf.save(filename);
+          console.log('PDF saved with filename:', filename);
+          toast.success('PDF başarıyla oluşturuldu!');
+        } catch (saveError) {
+          console.error('Error during PDF save operation:', saveError);
+          
+          // Alternative download method using data URI
+          try {
+            console.log('Trying alternative PDF download method');
+            const pdfOutput = pdf.output('datauristring');
+            const link = document.createElement('a');
+            link.href = pdfOutput;
+            link.download = filename;
+            link.click();
+            console.log('Alternative download method executed');
+            toast.success('PDF başarıyla indirildi!');
+          } catch (altSaveError) {
+            console.error('Alternative save method also failed:', altSaveError);
+            throw saveError; // Re-throw original error
+          }
+        }
+      } catch (pdfError) {
+        console.error('Detailed PDF generation error:', pdfError);
+        // Fallback basit PDF
+        try {
+          const fallbackPdf = new jsPDF();
+          fallbackPdf.text('DepositShield Report (Simplified Version)', 20, 20);
+          fallbackPdf.text('There was an error generating the full report.', 20, 30);
+          fallbackPdf.text(`Report ID: ${report?.id || uuid || 'Unknown'}`, 20, 40);
+          fallbackPdf.text(`Date: ${new Date().toLocaleDateString()}`, 20, 50);
+          
+          fallbackPdf.save(`DepositShield_Simple_Report_${new Date().getTime()}.pdf`);
+          toast.warning('Generated a simplified PDF due to an error with the full report.');
+          return;
+        } catch (fallbackError) {
+          console.error('Even fallback PDF failed:', fallbackError);
+          throw pdfError; // Rethrow the original error
+        }
       }
-      
-      // Alt bilgi
-      const pageCount = pdf.getNumberOfPages();
-      for (let i = 1; i <= pageCount; i++) {
-        pdf.setPage(i);
-        pdf.setFontSize(8);
-        pdf.setTextColor(150, 150, 150);
-        pdf.text(`Shared Report ID: ${report.id || uuid} | Page ${i} of ${pageCount} | Generated on ${new Date().toLocaleDateString()}`, margin, 285);
-      }
-      
-      // PDF'i indir
-      pdf.save(`DepositShield_Report_${report.id || uuid}_${new Date().toISOString().slice(0,10)}.pdf`);
-      toast.success('PDF report generated successfully!');
     } catch (error) {
       console.error('Error generating PDF:', error);
-      toast.error('There was an error generating the PDF. Please try again.');
+      toast.error(`PDF generation failed: ${error.message || 'Unknown error'}`);
     } finally {
       setGeneratingPdf(false);
     }
