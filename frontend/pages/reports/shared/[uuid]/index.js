@@ -1,4 +1,4 @@
-import { useState, useEffect } from 'react';
+import { useState, useEffect, useRef } from 'react';
 import { useRouter } from 'next/router';
 import Link from 'next/link';
 import { toast } from 'react-toastify';
@@ -18,6 +18,8 @@ export default function SharedReportView() {
   const [photos, setPhotos] = useState([]);
   const [loading, setLoading] = useState(true);
   const [photoLoading, setPhotoLoading] = useState(true);
+  const [generatingPdf, setGeneratingPdf] = useState(false);
+  const reportRef = useRef(null);
   // Onay durumu için yerel state - BAŞLAŞGIÇ DEĞERİ NULL OLMALI
   const [localApprovalStatus, setLocalApprovalStatus] = useState(null);
   // Rapor güncellendiğini kontrol etmek için state
@@ -512,6 +514,265 @@ export default function SharedReportView() {
     setSelectedPhoto(null);
   };
 
+  // Generate and download PDF
+  const generatePDF = async () => {
+    try {
+      setGeneratingPdf(true);
+      toast.info('Preparing PDF report...');
+
+      // Dinamik olarak jsPDF modülünü import et
+      const { jsPDF } = await import('jspdf');
+      
+      // Yeni bir PDF dokümanı oluştur
+      const pdf = new jsPDF({
+        orientation: 'portrait',
+        unit: 'mm',
+        format: 'a4',
+        compress: true
+      });
+      
+      // Font boyutları ve kenar boşlukları
+      const pageWidth = 210;
+      const margin = 20;
+      const contentWidth = pageWidth - 2 * margin;
+      const titleFontSize = 18;
+      const subtitleFontSize = 14;
+      const normalFontSize = 11;
+      const smallFontSize = 9;
+      const lineHeight = 7;
+      let yPosition = margin;
+      
+      // Logo (varsayılan olarak metnin içine logo yerleştirme)
+      pdf.setFontSize(20);
+      pdf.setFont('helvetica', 'bold');
+      pdf.setTextColor(59, 130, 246); // Indigo renginde logo metni
+      pdf.text('DepositShield', margin, yPosition + 10);
+      yPosition += 15;
+      
+      // Çizgi ekle
+      pdf.setDrawColor(200, 200, 200);
+      pdf.line(margin, yPosition, pageWidth - margin, yPosition);
+      yPosition += 10;
+      
+      // Rapor başlığı
+      pdf.setFontSize(titleFontSize);
+      pdf.setFont('helvetica', 'bold');
+      pdf.setTextColor(0, 0, 0);
+      
+      const reportTitle = `Property Report: ${report.title || 'Shared Report'}`;
+      pdf.text(reportTitle, margin, yPosition);
+      yPosition += 12;
+      
+      // Rapor alt başlığı
+      pdf.setFontSize(subtitleFontSize);
+      pdf.setFont('helvetica', 'normal');
+      let reportTypeLabel = 'General Observation';
+      
+      if (report.type) {
+        switch(report.type) {
+          case 'move-in':
+            reportTypeLabel = 'Pre-Move-In Report';
+            break;
+          case 'move-out':
+            reportTypeLabel = 'Post-Move-Out Report';
+            break;
+        }
+      }
+      
+      pdf.text(reportTypeLabel, margin, yPosition);
+      yPosition += lineHeight * 2;
+      
+      // Rapor paylaşım bilgisi
+      pdf.setFontSize(smallFontSize);
+      pdf.setFont('helvetica', 'italic');
+      pdf.setTextColor(100, 100, 100);
+      pdf.text('This is a shared report document', margin, yPosition);
+      yPosition += lineHeight * 1.5;
+      
+      // Rapor onay durumu
+      if (report.approval_status || localApprovalStatus) {
+        pdf.setFontSize(normalFontSize);
+        pdf.setFont('helvetica', 'bold');
+        
+        let statusLabel = '';
+        let actualStatus = report.approval_status || localApprovalStatus;
+        
+        if (actualStatus === 'approved') {
+          pdf.setTextColor(0, 128, 0); // Yeşil
+          statusLabel = 'APPROVED BY LANDLORD';
+        } else if (actualStatus === 'rejected') {
+          pdf.setTextColor(220, 0, 0); // Kırmızı
+          statusLabel = 'REJECTED BY LANDLORD';
+        }
+        
+        if (statusLabel) {
+          pdf.text(statusLabel, margin, yPosition);
+          yPosition += lineHeight;
+          
+          // Onay/ret tarihi
+          if (report.approved_at || report.rejected_at) {
+            pdf.setFontSize(smallFontSize);
+            pdf.setFont('helvetica', 'italic');
+            const dateStr = report.approved_at ? 
+              `Approved on ${new Date(report.approved_at).toLocaleDateString()}` : 
+              `Rejected on ${new Date(report.rejected_at).toLocaleDateString()}`;
+            pdf.text(dateStr, margin, yPosition);
+            yPosition += lineHeight;
+          }
+          
+          // Ret nedeni
+          if (actualStatus === 'rejected' && report.rejection_message) {
+            pdf.setFontSize(smallFontSize);
+            pdf.setFont('helvetica', 'italic');
+            pdf.setTextColor(128, 0, 0);
+            pdf.text('Rejection Reason:', margin, yPosition);
+            yPosition += lineHeight - 2;
+            
+            // Ret nedeni için uzun metin işlemesi
+            const maxWidth = contentWidth;
+            const splitText = pdf.splitTextToSize(report.rejection_message, maxWidth);
+            pdf.text(splitText, margin, yPosition);
+            yPosition += splitText.length * (lineHeight - 2);
+          }
+        }
+        
+        yPosition += lineHeight;
+      }
+      
+      // Adres bilgisi
+      pdf.setFontSize(normalFontSize);
+      pdf.setFont('helvetica', 'bold');
+      pdf.setTextColor(80, 80, 80);
+      pdf.text('Property Address:', margin, yPosition);
+      yPosition += lineHeight;
+      
+      pdf.setFont('helvetica', 'normal');
+      pdf.setTextColor(0, 0, 0);
+      pdf.text(report.address || 'Address not available', margin, yPosition);
+      yPosition += lineHeight * 2;
+      
+      // Tarih bilgisi
+      pdf.setFontSize(normalFontSize);
+      pdf.setFont('helvetica', 'bold');
+      pdf.setTextColor(80, 80, 80);
+      pdf.text('Report Date:', margin, yPosition);
+      yPosition += lineHeight;
+      
+      pdf.setFont('helvetica', 'normal');
+      pdf.setTextColor(0, 0, 0);
+      const formattedDate = report.created_at ? 
+        new Date(report.created_at).toLocaleDateString('en-US', {
+          year: 'numeric',
+          month: 'long',
+          day: 'numeric'
+        }) : 'Date not available';
+      pdf.text(formattedDate, margin, yPosition);
+      yPosition += lineHeight * 1.5;
+      
+      // Oluşturan bilgisi
+      if (report.creator_name) {
+        pdf.setFontSize(normalFontSize);
+        pdf.setFont('helvetica', 'bold');
+        pdf.setTextColor(80, 80, 80);
+        pdf.text('Created By:', margin, yPosition);
+        yPosition += lineHeight;
+        
+        pdf.setFont('helvetica', 'normal');
+        pdf.setTextColor(0, 0, 0);
+        pdf.text(report.creator_name, margin, yPosition);
+        yPosition += lineHeight * 2;
+      }
+      
+      // Kiracı bilgisi
+      if (report.tenant_name || report.tenant_email || report.creator_name || report.creator_email) {
+        pdf.setFontSize(normalFontSize);
+        pdf.setFont('helvetica', 'bold');
+        pdf.setTextColor(80, 80, 80);
+        pdf.text('Tenant Information:', margin, yPosition);
+        yPosition += lineHeight;
+        
+        pdf.setFont('helvetica', 'normal');
+        pdf.setTextColor(0, 0, 0);
+        
+        const name = report.tenant_name || report.creator_name || 'Not provided';
+        pdf.text(`Name: ${name}`, margin, yPosition);
+        yPosition += lineHeight;
+        
+        if (report.tenant_email || report.creator_email) {
+          const email = report.tenant_email || report.creator_email;
+          pdf.text(`Email: ${email}`, margin, yPosition);
+          yPosition += lineHeight;
+        }
+        
+        if (report.tenant_phone || report.creator_phone) {
+          const phone = report.tenant_phone || report.creator_phone;
+          pdf.text(`Phone: ${phone}`, margin, yPosition);
+          yPosition += lineHeight;
+        }
+        
+        yPosition += lineHeight;
+      }
+      
+      // Rapor açıklaması
+      if (report.description) {
+        pdf.setFontSize(normalFontSize);
+        pdf.setFont('helvetica', 'bold');
+        pdf.setTextColor(80, 80, 80);
+        pdf.text('Report Description:', margin, yPosition);
+        yPosition += lineHeight;
+        
+        pdf.setFont('helvetica', 'normal');
+        pdf.setTextColor(0, 0, 0);
+        
+        // Uzun açıklama için metin işleme
+        const maxWidth = contentWidth;
+        const splitText = pdf.splitTextToSize(report.description, maxWidth);
+        pdf.text(splitText, margin, yPosition);
+        yPosition += splitText.length * lineHeight;
+      }
+      
+      // Fotoğraf bilgisi ekle
+      if (photos.length > 0) {
+        // Yeni sayfaya geç eğer yeterli alan kalmadıysa
+        if (yPosition > 230) {
+          pdf.addPage();
+          yPosition = margin;
+        } else {
+          yPosition += lineHeight * 2;
+        }
+        
+        pdf.setFontSize(subtitleFontSize);
+        pdf.setFont('helvetica', 'bold');
+        pdf.setTextColor(0, 0, 0);
+        pdf.text(`Photos (${photos.length})`, margin, yPosition);
+        yPosition += lineHeight * 1.5;
+        
+        pdf.setFontSize(smallFontSize);
+        pdf.setFont('helvetica', 'italic');
+        pdf.setTextColor(100, 100, 100);
+        pdf.text('* Photos can be viewed in the online report at depositshield.retako.com', margin, yPosition);
+      }
+      
+      // Alt bilgi
+      const pageCount = pdf.getNumberOfPages();
+      for (let i = 1; i <= pageCount; i++) {
+        pdf.setPage(i);
+        pdf.setFontSize(8);
+        pdf.setTextColor(150, 150, 150);
+        pdf.text(`Shared Report ID: ${report.id || uuid} | Page ${i} of ${pageCount} | Generated on ${new Date().toLocaleDateString()}`, margin, 285);
+      }
+      
+      // PDF'i indir
+      pdf.save(`DepositShield_Report_${report.id || uuid}_${new Date().toISOString().slice(0,10)}.pdf`);
+      toast.success('PDF report generated successfully!');
+    } catch (error) {
+      console.error('Error generating PDF:', error);
+      toast.error('There was an error generating the PDF. Please try again.');
+    } finally {
+      setGeneratingPdf(false);
+    }
+  };
+
   if (loading) {
     return (
       <PublicLayout>
@@ -545,9 +806,21 @@ export default function SharedReportView() {
     <PublicLayout>
       <div className="container mx-auto px-4 py-8">
         <div className="mb-6">
-          <div className="flex items-center gap-2 mb-1">
-            <h1 className="text-2xl font-bold">Shared Report</h1>
-            {getReportTypeBadge(report.type)}
+          <div className="flex flex-col sm:flex-row justify-between items-start sm:items-center gap-3 mb-1">
+            <div className="flex items-center gap-2">
+              <h1 className="text-2xl font-bold">Shared Report</h1>
+              {getReportTypeBadge(report.type)}
+            </div>
+            <button 
+              onClick={generatePDF}
+              disabled={generatingPdf}
+              className="btn btn-primary flex items-center py-1 px-3 w-full sm:w-auto justify-center"
+            >
+              <svg xmlns="http://www.w3.org/2000/svg" className="h-4 w-4 mr-1" fill="none" viewBox="0 0 24 24" stroke="currentColor">
+                <path strokeLinecap="round" strokeLinejoin="round" strokeWidth={2} d="M12 10v6m0 0l-3-3m3 3l3-3m2 8H7a2 2 0 01-2-2V5a2 2 0 012-2h5.586a1 1 0 01.707.293l5.414 5.414a1 1 0 01.293.707V19a2 2 0 01-2 2z" />
+              </svg>
+              {generatingPdf ? 'Generating...' : 'Download PDF'}
+            </button>
           </div>
           <p className="text-gray-600 dark:text-gray-400">
             Viewing a shared property report
@@ -555,7 +828,7 @@ export default function SharedReportView() {
         </div>
         
         {/* Report Information */}
-        <div className="bg-white dark:bg-gray-800 rounded-lg shadow-md p-6 mb-6">
+        <div ref={reportRef} className="bg-white dark:bg-gray-800 rounded-lg shadow-md p-6 mb-6">
         <div className="mb-1">
         <div className="flex items-center gap-2 mb-1">
         <h2 className="text-xl font-semibold">{report.title || 'Shared Report'}</h2>

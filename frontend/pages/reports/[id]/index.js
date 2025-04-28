@@ -1,4 +1,4 @@
-import { useState, useEffect } from 'react';
+import { useState, useEffect, useRef } from 'react';
 import { useRouter } from 'next/router';
 import Link from 'next/link';
 import { toast } from 'react-toastify';
@@ -39,6 +39,8 @@ export default function ReportDetail() {
   const [photos, setPhotos] = useState([]);
   const [loading, setLoading] = useState(true);
   const [photoLoading, setPhotoLoading] = useState(true);
+  const [generatingPdf, setGeneratingPdf] = useState(false);
+  const reportRef = useRef(null);
   const router = useRouter();
   const { id } = router.query;
 
@@ -334,6 +336,237 @@ export default function ReportDetail() {
     });
   };
 
+  // Generate and download PDF
+  const generatePDF = async () => {
+    try {
+      setGeneratingPdf(true);
+      toast.info('Preparing PDF report...');
+
+      // Dinamik olarak jsPDF modülünü import et
+      const { jsPDF } = await import('jspdf');
+      
+      // Yeni bir PDF dokümanı oluştur
+      const pdf = new jsPDF({
+        orientation: 'portrait',
+        unit: 'mm',
+        format: 'a4',
+        compress: true
+      });
+      
+      // Font boyutları ve kenar boşlukları
+      const pageWidth = 210;
+      const margin = 20;
+      const contentWidth = pageWidth - 2 * margin;
+      const titleFontSize = 18;
+      const subtitleFontSize = 14;
+      const normalFontSize = 11;
+      const smallFontSize = 9;
+      const lineHeight = 7;
+      let yPosition = margin;
+      
+      // Logo (varsayılan olarak metnin içine logo yerleştirme)
+      pdf.setFontSize(20);
+      pdf.setFont('helvetica', 'bold');
+      pdf.setTextColor(59, 130, 246); // Indigo renginde logo metni
+      pdf.text('DepositShield', margin, yPosition + 10);
+      yPosition += 15;
+      
+      // Çizgi ekle
+      pdf.setDrawColor(200, 200, 200);
+      pdf.line(margin, yPosition, pageWidth - margin, yPosition);
+      yPosition += 10;
+      
+      // Rapor başlığı
+      pdf.setFontSize(titleFontSize);
+      pdf.setFont('helvetica', 'bold');
+      pdf.setTextColor(0, 0, 0);
+      
+      const reportTitle = `Property Report: ${report.title}`;
+      pdf.text(reportTitle, margin, yPosition);
+      yPosition += 12;
+      
+      // Rapor alt başlığı
+      pdf.setFontSize(subtitleFontSize);
+      pdf.setFont('helvetica', 'normal');
+      let reportTypeLabel = 'General Observation';
+      
+      switch(report.type) {
+        case 'move-in':
+          reportTypeLabel = 'Pre-Move-In Report';
+          break;
+        case 'move-out':
+          reportTypeLabel = 'Post-Move-Out Report';
+          break;
+      }
+      
+      pdf.text(reportTypeLabel, margin, yPosition);
+      yPosition += lineHeight * 2;
+      
+      // Rapor onay durumu
+      if (report.approval_status) {
+        pdf.setFontSize(normalFontSize);
+        pdf.setFont('helvetica', 'bold');
+        
+        let statusLabel = '';
+        
+        if (report.approval_status === 'approved') {
+          pdf.setTextColor(0, 128, 0); // Yeşil
+          statusLabel = 'APPROVED BY LANDLORD';
+        } else if (report.approval_status === 'rejected') {
+          pdf.setTextColor(220, 0, 0); // Kırmızı
+          statusLabel = 'REJECTED BY LANDLORD';
+        }
+        
+        if (statusLabel) {
+          pdf.text(statusLabel, margin, yPosition);
+          yPosition += lineHeight;
+          
+          // Ret nedeni
+          if (report.approval_status === 'rejected' && report.rejection_message) {
+            pdf.setFontSize(smallFontSize);
+            pdf.setFont('helvetica', 'italic');
+            pdf.setTextColor(128, 0, 0);
+            pdf.text('Rejection Reason:', margin, yPosition);
+            yPosition += lineHeight - 2;
+            
+            // Ret nedeni için uzun metin işlemesi
+            const maxWidth = contentWidth;
+            const splitText = pdf.splitTextToSize(report.rejection_message, maxWidth);
+            pdf.text(splitText, margin, yPosition);
+            yPosition += splitText.length * (lineHeight - 2);
+          }
+        }
+        
+        yPosition += lineHeight;
+      }
+      
+      // Adres bilgisi
+      pdf.setFontSize(normalFontSize);
+      pdf.setFont('helvetica', 'bold');
+      pdf.setTextColor(80, 80, 80);
+      pdf.text('Property Address:', margin, yPosition);
+      yPosition += lineHeight;
+      
+      pdf.setFont('helvetica', 'normal');
+      pdf.setTextColor(0, 0, 0);
+      pdf.text(report.address, margin, yPosition);
+      yPosition += lineHeight * 2;
+      
+      // Tarih bilgisi
+      pdf.setFontSize(normalFontSize);
+      pdf.setFont('helvetica', 'bold');
+      pdf.setTextColor(80, 80, 80);
+      pdf.text('Report Date:', margin, yPosition);
+      yPosition += lineHeight;
+      
+      pdf.setFont('helvetica', 'normal');
+      pdf.setTextColor(0, 0, 0);
+      const formattedDate = new Date(report.created_at).toLocaleDateString('en-US', {
+        year: 'numeric',
+        month: 'long',
+        day: 'numeric'
+      });
+      pdf.text(formattedDate, margin, yPosition);
+      yPosition += lineHeight * 1.5;
+      
+      // Oluşturan bilgisi
+      if (report.creator_name) {
+        pdf.setFontSize(normalFontSize);
+        pdf.setFont('helvetica', 'bold');
+        pdf.setTextColor(80, 80, 80);
+        pdf.text('Created By:', margin, yPosition);
+        yPosition += lineHeight;
+        
+        pdf.setFont('helvetica', 'normal');
+        pdf.setTextColor(0, 0, 0);
+        pdf.text(report.creator_name, margin, yPosition);
+        yPosition += lineHeight * 2;
+      }
+      
+      // Kiracı bilgisi
+      if (report.tenant_name || report.tenant_email) {
+        pdf.setFontSize(normalFontSize);
+        pdf.setFont('helvetica', 'bold');
+        pdf.setTextColor(80, 80, 80);
+        pdf.text('Tenant Information:', margin, yPosition);
+        yPosition += lineHeight;
+        
+        pdf.setFont('helvetica', 'normal');
+        pdf.setTextColor(0, 0, 0);
+        
+        if (report.tenant_name) {
+          pdf.text(`Name: ${report.tenant_name}`, margin, yPosition);
+          yPosition += lineHeight;
+        }
+        
+        if (report.tenant_email) {
+          pdf.text(`Email: ${report.tenant_email}`, margin, yPosition);
+          yPosition += lineHeight;
+        }
+        
+        yPosition += lineHeight;
+      }
+      
+      // Rapor açıklaması
+      if (report.description) {
+        pdf.setFontSize(normalFontSize);
+        pdf.setFont('helvetica', 'bold');
+        pdf.setTextColor(80, 80, 80);
+        pdf.text('Report Description:', margin, yPosition);
+        yPosition += lineHeight;
+        
+        pdf.setFont('helvetica', 'normal');
+        pdf.setTextColor(0, 0, 0);
+        
+        // Uzun açıklama için metin işleme
+        const maxWidth = contentWidth;
+        const splitText = pdf.splitTextToSize(report.description, maxWidth);
+        pdf.text(splitText, margin, yPosition);
+        yPosition += splitText.length * lineHeight;
+      }
+      
+      // Fotoğraf bilgisi ekle
+      if (photos.length > 0) {
+        // Yeni sayfaya geç eğer yeterli alan kalmadıysa
+        if (yPosition > 230) {
+          pdf.addPage();
+          yPosition = margin;
+        } else {
+          yPosition += lineHeight * 2;
+        }
+        
+        pdf.setFontSize(subtitleFontSize);
+        pdf.setFont('helvetica', 'bold');
+        pdf.setTextColor(0, 0, 0);
+        pdf.text(`Photos (${photos.length})`, margin, yPosition);
+        yPosition += lineHeight * 1.5;
+        
+        pdf.setFontSize(smallFontSize);
+        pdf.setFont('helvetica', 'italic');
+        pdf.setTextColor(100, 100, 100);
+        pdf.text('* Photos can be viewed in the online report at depositshield.retako.com', margin, yPosition);
+      }
+      
+      // Alt bilgi
+      const pageCount = pdf.getNumberOfPages();
+      for (let i = 1; i <= pageCount; i++) {
+        pdf.setPage(i);
+        pdf.setFontSize(8);
+        pdf.setTextColor(150, 150, 150);
+        pdf.text(`Report ID: ${report.id} | Page ${i} of ${pageCount} | Generated on ${new Date().toLocaleDateString()}`, margin, 285);
+      }
+      
+      // PDF'i indir
+      pdf.save(`DepositShield_Report_${report.id}_${new Date().toISOString().slice(0,10)}.pdf`);
+      toast.success('PDF report generated successfully!');
+    } catch (error) {
+      console.error('Error generating PDF:', error);
+      toast.error('There was an error generating the PDF. Please try again.');
+    } finally {
+      setGeneratingPdf(false);
+    }
+  };
+
   if (loading || authLoading) {
     return (
       <Layout>
@@ -397,8 +630,8 @@ export default function ReportDetail() {
         </div>
         
         {/* Report Information */}
-        <div className="bg-white rounded-xl shadow-lg overflow-hidden border border-gray-100 mb-8">
-          <div className="bg-indigo-50 p-4 flex justify-between items-center">
+        <div ref={reportRef} className="bg-white rounded-xl shadow-lg overflow-hidden border border-gray-100 mb-8">
+          <div className="bg-indigo-50 p-4 flex flex-col sm:flex-row justify-between items-start sm:items-center gap-3">
             <div className="flex items-center gap-3">
               <h2 className="text-xl font-semibold text-indigo-700">{report.title}</h2>
               <span className={`inline-flex items-center px-2 py-1 text-xs font-medium rounded-full
@@ -409,15 +642,27 @@ export default function ReportDetail() {
               </span>
             </div>
             
-            <button 
-              onClick={copyShareLink}
-              className="btn btn-secondary flex items-center py-1"
-            >
-              <svg xmlns="http://www.w3.org/2000/svg" className="h-4 w-4 mr-1" fill="none" viewBox="0 0 24 24" stroke="currentColor">
-                <path strokeLinecap="round" strokeLinejoin="round" strokeWidth={2} d="M8.684 13.342C8.886 12.938 9 12.482 9 12c0-.482-.114-.938-.316-1.342m0 2.684a3 3 0 110-2.684m0 2.684l6.632 3.316m-6.632-6l6.632-3.316m0 0a3 3 0 105.367-2.684 3 3 0 00-5.367 2.684zm0 9.316a3 3 0 105.368 2.684 3 3 0 00-5.368-2.684z" />
-              </svg>
-              Share
-            </button>
+            <div className="flex space-x-2 w-full sm:w-auto">
+              <button 
+                onClick={copyShareLink}
+                className="btn btn-secondary flex items-center py-1 flex-1 sm:flex-initial justify-center"
+              >
+                <svg xmlns="http://www.w3.org/2000/svg" className="h-4 w-4 mr-1" fill="none" viewBox="0 0 24 24" stroke="currentColor">
+                  <path strokeLinecap="round" strokeLinejoin="round" strokeWidth={2} d="M8.684 13.342C8.886 12.938 9 12.482 9 12c0-.482-.114-.938-.316-1.342m0 2.684a3 3 0 110-2.684m0 2.684l6.632 3.316m-6.632-6l6.632-3.316m0 0a3 3 0 105.367-2.684 3 3 0 00-5.367 2.684zm0 9.316a3 3 0 105.368 2.684 3 3 0 00-5.368-2.684z" />
+                </svg>
+                Share
+              </button>
+              <button 
+                onClick={generatePDF}
+                disabled={generatingPdf}
+                className="btn btn-primary flex items-center py-1 flex-1 sm:flex-initial justify-center"
+              >
+                <svg xmlns="http://www.w3.org/2000/svg" className="h-4 w-4 mr-1" fill="none" viewBox="0 0 24 24" stroke="currentColor">
+                  <path strokeLinecap="round" strokeLinejoin="round" strokeWidth={2} d="M12 10v6m0 0l-3-3m3 3l3-3m2 8H7a2 2 0 01-2-2V5a2 2 0 012-2h5.586a1 1 0 01.707.293l5.414 5.414a1 1 0 01.293.707V19a2 2 0 01-2 2z" />
+                </svg>
+                {generatingPdf ? 'Generating...' : 'Download PDF'}
+              </button>
+            </div>
           </div>
           
           <div className="p-6">
@@ -494,7 +739,7 @@ export default function ReportDetail() {
               </div>
             </div>
             
-              <div className="flex flex-wrap gap-3 mt-6 pt-4 border-t border-gray-100">
+              <div className="flex flex-wrap gap-3 mt-6 pt-4 border-t border-gray-100 md:flex-row flex-col sm:flex-row">
                 {/* Rapor paylaşılıp onaylandığında, Edit ve Delete butonları gösterilmeyecek */}
                 {report.approval_status === 'approved' ? (
                   <div className="flex items-center text-gray-600">
@@ -506,19 +751,13 @@ export default function ReportDetail() {
                 ) : report.approval_status === 'rejected' ? (
                   /* Rapor reddedildiğinde, Edit ve Archive butonları gösterilecek */
                   <>
-                    <Link href={`/reports/edit?id=${report.id}`} className="btn btn-secondary hover:bg-gray-100 transition-all duration-300 flex items-center">
+                    <Link href={`/reports/edit?id=${report.id}`} className="btn btn-secondary hover:bg-gray-100 transition-all duration-300 flex items-center w-full sm:w-auto justify-center sm:justify-start">
                       <svg xmlns="http://www.w3.org/2000/svg" className="h-4 w-4 mr-2" fill="none" viewBox="0 0 24 24" stroke="currentColor">
                         <path strokeLinecap="round" strokeLinejoin="round" strokeWidth={2} d="M15.232 5.232l3.536 3.536m-2.036-5.036a2.5 2.5 0 113.536 3.536L6.5 21.036H3v-3.572L16.732 3.732z" />
                       </svg>
                       Edit Report
                     </Link>
-                    <button onClick={copyShareLink} className="btn btn-secondary flex items-center py-1">
-                      <svg xmlns="http://www.w3.org/2000/svg" className="h-4 w-4 mr-1" fill="none" viewBox="0 0 24 24" stroke="currentColor">
-                        <path strokeLinecap="round" strokeLinejoin="round" strokeWidth={2} d="M8.684 13.342C8.886 12.938 9 12.482 9 12c0-.482-.114-.938-.316-1.342m0 2.684a3 3 0 110-2.684m0 2.684l6.632 3.316m-6.632-6l6.632-3.316m0 0a3 3 0 105.367-2.684 3 3 0 00-5.367 2.684zm0 9.316a3 3 0 105.368 2.684 3 3 0 00-5.368-2.684z" />
-                      </svg>
-                      Share
-                    </button>
-                    <button onClick={handleDeleteReport} className="btn bg-red-50 text-red-600 border border-red-200 hover:bg-red-100 transition-all duration-300 flex items-center">
+                    <button onClick={handleDeleteReport} className="btn bg-red-50 text-red-600 border border-red-200 hover:bg-red-100 transition-all duration-300 flex items-center w-full sm:w-auto justify-center sm:justify-start">
                       <svg xmlns="http://www.w3.org/2000/svg" className="h-4 w-4 mr-2" fill="none" viewBox="0 0 24 24" stroke="currentColor">
                         <path strokeLinecap="round" strokeLinejoin="round" strokeWidth={2} d="M19 7l-.867 12.142A2 2 0 0116.138 21H7.862a2 2 0 01-1.995-1.858L5 7m5 4v6m4-6v6m1-10V4a1 1 0 00-1-1h-4a1 1 0 00-1 1v3M4 7h16" />
                       </svg>
@@ -528,13 +767,13 @@ export default function ReportDetail() {
                 ) : (
                   /* Diğer durumlarda normal Edit ve Delete butonları */
                   <>
-                    <Link href={`/reports/edit?id=${report.id}`} className="btn btn-secondary hover:bg-gray-100 transition-all duration-300 flex items-center">
+                    <Link href={`/reports/edit?id=${report.id}`} className="btn btn-secondary hover:bg-gray-100 transition-all duration-300 flex items-center w-full sm:w-auto justify-center sm:justify-start">
                       <svg xmlns="http://www.w3.org/2000/svg" className="h-4 w-4 mr-2" fill="none" viewBox="0 0 24 24" stroke="currentColor">
                         <path strokeLinecap="round" strokeLinejoin="round" strokeWidth={2} d="M15.232 5.232l3.536 3.536m-2.036-5.036a2.5 2.5 0 113.536 3.536L6.5 21.036H3v-3.572L16.732 3.732z" />
                       </svg>
                       Edit Report
                     </Link>
-                    <button onClick={handleDeleteReport} className="btn bg-red-50 text-red-600 border border-red-200 hover:bg-red-100 transition-all duration-300 flex items-center">
+                    <button onClick={handleDeleteReport} className="btn bg-red-50 text-red-600 border border-red-200 hover:bg-red-100 transition-all duration-300 flex items-center w-full sm:w-auto justify-center sm:justify-start">
                       <svg xmlns="http://www.w3.org/2000/svg" className="h-4 w-4 mr-2" fill="none" viewBox="0 0 24 24" stroke="currentColor">
                         <path strokeLinecap="round" strokeLinejoin="round" strokeWidth={2} d="M19 7l-.867 12.142A2 2 0 0116.138 21H7.862a2 2 0 01-1.995-1.858L5 7m5 4v6m4-6v6m1-10V4a1 1 0 00-1-1h-4a1 1 0 00-1 1v3M4 7h16" />
                       </svg>
@@ -544,29 +783,39 @@ export default function ReportDetail() {
                 )}
                 
                 {report.approval_status && (
-                  <div className={`flex items-center px-3 py-1.5 rounded-md text-sm ml-auto ${report.approval_status === 'approved' ? 'bg-green-50 text-green-700' : report.approval_status === 'rejected' ? 'bg-red-50 text-red-700' : 'bg-gray-50 text-gray-600'}`}>
-                    {report.approval_status === 'approved' ? (
-                      <>
-                        <svg xmlns="http://www.w3.org/2000/svg" className="h-4 w-4 mr-1.5" fill="none" viewBox="0 0 24 24" stroke="currentColor">
-                          <path strokeLinecap="round" strokeLinejoin="round" strokeWidth={2} d="M5 13l4 4L19 7" />
-                        </svg>
-                        Approved by landlord
-                      </>
-                    ) : report.approval_status === 'rejected' ? (
-                      <>
-                        <svg xmlns="http://www.w3.org/2000/svg" className="h-4 w-4 mr-1.5" fill="none" viewBox="0 0 24 24" stroke="currentColor">
-                          <path strokeLinecap="round" strokeLinejoin="round" strokeWidth={2} d="M6 18L18 6M6 6l12 12" />
-                        </svg>
-                        Rejected by landlord
-                      </>
-                    ) : (
-                      <>
-                        <svg xmlns="http://www.w3.org/2000/svg" className="h-4 w-4 mr-1.5" fill="none" viewBox="0 0 24 24" stroke="currentColor">
-                          <path strokeLinecap="round" strokeLinejoin="round" strokeWidth={2} d="M12 8v4l3 3m6-3a9 9 0 11-18 0 9 9 0 0118 0z" />
-                        </svg>
-                        Pending landlord approval
-                      </>
-                    )}
+                  <div className="flex flex-col md:items-end ml-auto w-full md:w-auto mt-4 md:mt-0">
+                    <div className="space-y-2 max-w-full">
+                      <div className={`flex items-center px-3 py-1.5 rounded-md text-sm ${report.approval_status === 'approved' ? 'bg-green-50 text-green-700' : report.approval_status === 'rejected' ? 'bg-red-50 text-red-700' : 'bg-gray-50 text-gray-600'}`}>
+                        {report.approval_status === 'approved' ? (
+                          <>
+                            <svg xmlns="http://www.w3.org/2000/svg" className="h-4 w-4 mr-1.5 flex-shrink-0" fill="none" viewBox="0 0 24 24" stroke="currentColor">
+                              <path strokeLinecap="round" strokeLinejoin="round" strokeWidth={2} d="M5 13l4 4L19 7" />
+                            </svg>
+                            <span>Approved by landlord</span>
+                          </>
+                        ) : report.approval_status === 'rejected' ? (
+                          <>
+                            <svg xmlns="http://www.w3.org/2000/svg" className="h-4 w-4 mr-1.5 flex-shrink-0" fill="none" viewBox="0 0 24 24" stroke="currentColor">
+                              <path strokeLinecap="round" strokeLinejoin="round" strokeWidth={2} d="M6 18L18 6M6 6l12 12" />
+                            </svg>
+                            <span>Rejected by landlord</span>
+                          </>
+                        ) : (
+                          <>
+                            <svg xmlns="http://www.w3.org/2000/svg" className="h-4 w-4 mr-1.5 flex-shrink-0" fill="none" viewBox="0 0 24 24" stroke="currentColor">
+                              <path strokeLinecap="round" strokeLinejoin="round" strokeWidth={2} d="M12 8v4l3 3m6-3a9 9 0 11-18 0 9 9 0 0118 0z" />
+                            </svg>
+                            <span>Pending landlord approval</span>
+                          </>
+                        )}
+                      </div>
+                      {report.approval_status === 'rejected' && report.rejection_message && (
+                        <div className="px-3 py-2 bg-red-50 text-red-700 text-sm rounded-md border border-red-200 break-words">
+                          <p className="font-medium mb-1">Rejection Reason:</p>
+                          <p className="text-red-600 whitespace-normal">{report.rejection_message}</p>
+                        </div>
+                      )}
+                    </div>
                   </div>
                 )}
               </div>
