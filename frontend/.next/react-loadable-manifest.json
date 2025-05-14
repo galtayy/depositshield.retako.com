@@ -1,6 +1,101 @@
 {
+  "lib/simplePdfGenerator.js -> jspdf": {
+    "id": 1819,
+    "files": [
+      "static/chunks/e78312c5.5fae82e38774a757.js",
+      "static/chunks/3412.ae522beb192aeafd.js"
+    ]
+  },
+  "node_modules/jspdf/dist/jspdf.es.min.js -> canvg": {
+    "id": 4668,
+    "files": [
+      "static/chunks/72a30a16.138c622e924ddabb.js",
+      "static/chunks/385.33be0df9f0ae10d2.js"
+    ]
+  },
+  "node_modules/jspdf/dist/jspdf.es.min.js -> dompurify": {
+    "id": 7856,
+    "files": [
+      "static/chunks/7856.1bbed89e6f0593fd.js"
+    ]
+  },
+  "node_modules/jspdf/dist/jspdf.es.min.js -> html2canvas": {
+    "id": 1120,
+    "files": [
+      "static/chunks/ad7f724d.bd53a3a87209477e.js"
+    ]
+  },
+  "pages/index.js -> axios": {
+    "id": 9204,
+    "files": [
+      "static/chunks/9204.91ffb47e82d33ff9.js"
+    ]
+  },
+  "pages/move-out/index.js -> axios": {
+    "id": 9204,
+    "files": [
+      "static/chunks/9204.91ffb47e82d33ff9.js"
+    ]
+  },
+  "pages/move-out/rooms.js -> axios": {
+    "id": 9204,
+    "files": [
+      "static/chunks/9204.91ffb47e82d33ff9.js"
+    ]
+  },
+  "pages/move-out/rooms.js -> uuid": {
+    "id": 6332,
+    "files": [
+      "static/chunks/6332.7336664d5fa5b224.js"
+    ]
+  },
+  "pages/move-out/start.js -> axios": {
+    "id": 9204,
+    "files": [
+      "static/chunks/9204.91ffb47e82d33ff9.js"
+    ]
+  },
   "pages/properties/[id]/summary.js -> axios": {
-    "id": "pages/properties/[id]/summary.js -> axios",
-    "files": []
+    "id": 9204,
+    "files": [
+      "static/chunks/9204.91ffb47e82d33ff9.js"
+    ]
+  },
+  "pages/properties/addunit.js -> axios": {
+    "id": 9204,
+    "files": [
+      "static/chunks/9204.91ffb47e82d33ff9.js"
+    ]
+  },
+  "pages/reports/[id]/index.js -> axios": {
+    "id": 9204,
+    "files": [
+      "static/chunks/9204.91ffb47e82d33ff9.js"
+    ]
+  },
+  "pages/reports/[id]/index.js -> jspdf": {
+    "id": 1819,
+    "files": [
+      "static/chunks/e78312c5.5fae82e38774a757.js",
+      "static/chunks/3412.ae522beb192aeafd.js"
+    ]
+  },
+  "pages/reports/edit/index.js -> axios": {
+    "id": 9204,
+    "files": [
+      "static/chunks/9204.91ffb47e82d33ff9.js"
+    ]
+  },
+  "pages/reports/index.js -> axios": {
+    "id": 9204,
+    "files": [
+      "static/chunks/9204.91ffb47e82d33ff9.js"
+    ]
+  },
+  "pages/verification-success.js -> react-confetti": {
+    "id": 8583,
+    "files": [
+      "static/chunks/8583.b9ffba15aa827b8a.js"
+    ]
   }
 }

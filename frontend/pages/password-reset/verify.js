@@ -247,9 +247,7 @@ export default function VerifyCode() {
                 {[0, 1, 2, 3].map((index) => (
                   <div 
                     key={index} 
-                    className={`box-border w-[60px] h-[56px] bg-white border rounded-[16px] relative transition-colors duration-200 ${
-                      inputRefs[index] === document.activeElement ? 'border-[#55A363] bg-[#F6FEF7]' : 'border-[#D1E7D5]'
-                    }`}
+                    className={`box-border w-[60px] h-[56px] bg-white border rounded-[16px] relative transition-colors duration-200 border-[#D1E7D5]`}
                   >
                     <input
                       ref={inputRefs[index]}
