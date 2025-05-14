@@ -1,0 +1,8 @@
+{
+  "/_app": "pages/_app.js",
+  "/_error": "pages/_error.js",
+  "/_document": "pages/_document.js",
+  "/reports/shared/[uuid]": "pages/reports/shared/[uuid].js",
+  "/properties/[id]/summary": "pages/properties/[id]/summary.js",
+  "/reports/share-success": "pages/reports/share-success.js"
+}

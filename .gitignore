@@ -1,5 +1,5 @@
 # dependencies
 frontend/node_modules/
-frontend/.next/
+# frontend/.next/
 
 **/.claude/settings.local.json
