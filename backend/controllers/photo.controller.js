@@ -5,6 +5,7 @@ const multer = require('multer');
 const Photo = require('../models/photo.model');
 const Report = require('../models/report.model');
 const Property = require('../models/property.model');
+const db = require('../config/database');
 
 // Kimlik doğrulama gerektirmeden rapora ait tüm fotoğrafları getirme endpoint'i
 exports.getPublicReportPhotos = async (req, res) => {
@@ -676,5 +677,86 @@ exports.deletePhoto = async (req, res) => {
   } catch (error) {
     console.error('Delete photo error:', error);
     res.status(500).json({ message: 'Sunucu hatası' });
+  }
+};
+
+// Fotoğrafı özel olarak bir rapor ile ilişkilendirme
+exports.associateWithReport = async (req, res) => {
+  try {
+    const photoId = req.params.photoId;
+    const reportId = req.params.reportId;
+    const { roomId, roomName } = req.body;
+    
+    console.log(`[PHOTO] Associating photo ${photoId} with report ${reportId}, room ${roomId}, roomName: ${roomName}`);
+    
+    // Önce fotoğrafın var olduğunu kontrol et
+    const photo = await Photo.findById(photoId);
+    if (!photo) {
+      return res.status(404).json({ message: 'Photo not found' });
+    }
+    
+    // Hem room_id hem report_id güncellemesi yap
+    const updated = await db.execute(
+      'UPDATE photos SET report_id = ?, room_id = ?, note = COALESCE(note, ?) WHERE id = ?',
+      [reportId, roomId, `Room: ${roomName || roomId}`, photoId]
+    );
+    
+    // Ayrıca ilişkiyi ara tabloya da kaydet
+    try {
+      const checkAssociationTableExists = await db.execute(`
+        SELECT 1 FROM information_schema.tables 
+        WHERE table_schema = DATABASE() 
+        AND table_name = 'photo_report_association'
+      `);
+      
+      if (checkAssociationTableExists[0].length === 0) {
+        // Association tablosu yoksa oluştur
+        await db.execute(`
+          CREATE TABLE IF NOT EXISTS photo_report_association (
+            id INT AUTO_INCREMENT PRIMARY KEY,
+            photo_id INT NOT NULL,
+            report_id INT NOT NULL,
+            room_id VARCHAR(255),
+            created_at TIMESTAMP DEFAULT CURRENT_TIMESTAMP,
+            UNIQUE KEY (photo_id, report_id)
+          )
+        `);
+        console.log(`[PHOTO] Created photo_report_association table`);
+      }
+      
+      // İlişkiyi kaydet - try/catch ile daha güvenli hale getirildi
+      try {
+        await db.execute(`
+          INSERT INTO photo_report_association (photo_id, report_id, room_id) 
+          VALUES (?, ?, ?)
+          ON DUPLICATE KEY UPDATE room_id = ?
+        `, [photoId, reportId, roomId, roomId]);
+      } catch (err) {
+        // Tablo yoksa veya başka bir sorun varsa hata ayıklama için log
+        console.log(`[WARN] Association record failed: ${err.message}`);
+      }
+      
+      console.log(`[PHOTO] Added association: photo ${photoId} with report ${reportId}, room ${roomId}`);
+    } catch (assocError) {
+      console.error('Association table error:', assocError);
+      // Hata olsa bile devam et, ana güncelleme yapıldı
+    }
+    
+    console.log(`[PHOTO] Update result: ${JSON.stringify(updated[0])}`);
+    
+    if (updated[0].affectedRows === 0) {
+      return res.status(400).json({ message: 'Failed to associate photo with report' });
+    }
+    
+    res.json({ 
+      message: 'Photo successfully associated with report',
+      photoId,
+      reportId,
+      roomId,
+      roomName
+    });
+  } catch (error) {
+    console.error('Associate photo with report error:', error);
+    res.status(500).json({ message: 'Server error' });
   }
 };

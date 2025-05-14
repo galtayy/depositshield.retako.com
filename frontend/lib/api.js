@@ -169,10 +169,35 @@ publicTokenApi.interceptors.response.use(
   }
 );
 
+// Helper function to construct photo URLs
+const constructPhotoUrl = (photo, baseUrl = API_URL) => {
+  if (!photo) return null;
+  
+  // Get the path from photo object
+  const photoPath = photo.path || photo.url || '';
+  
+  // If path is empty, return null
+  if (!photoPath) return null;
+  
+  // If it already contains http/https, return as is
+  if (photoPath.startsWith('http')) {
+    return photoPath;
+  }
+  
+  // Remove leading slash to avoid double slashes
+  const path = photoPath.startsWith('/') ? photoPath.substring(1) : photoPath;
+  
+  // Construct the full URL
+  return `${baseUrl}/${path}`;
+};
+
 // API fonksiyonları
 export const apiService = {
   // API Base URL getter - Fotoğraf URL'leri oluşturmak için kullanılır
   getBaseUrl: () => API_URL,
+  
+  // Photo URL constructor helper
+  getPhotoUrl: (photo) => constructPhotoUrl(photo, API_URL),
 
   // Mülk işlemleri
   properties: {
@@ -357,11 +382,11 @@ export const apiService = {
         console.log('Final approval_status:', response.data.approval_status);
         return response;
       }).catch(error => {
-        // Eğer API hatası alınırsa, fallback data dön
+        // API hatası durumunda detaylı log kaydı ve açık hata dönüşü
         console.warn('Error fetching report by UUID:', error.message || error);
         console.error('API Error details:', error.response ? error.response.data : 'No response data');
         
-        // Eğer veritabanı schema hatası varsa (ER_BAD_FIELD_ERROR)
+        // Veritabanı şema hatası varsa alternatif endpoint dene
         if (error.response && error.response.data && 
             (error.response.data.code === 'ER_BAD_FIELD_ERROR' || 
              (error.response.data.message && error.response.data.message.includes('Unknown column')))) {
@@ -376,42 +401,46 @@ export const apiService = {
             }
           }).catch(altError => {
             console.error('Alternative endpoint also failed:', altError.message || altError);
-            // Fallback dummy rapor döndür
-            const dummyReport = {
+            // Hata durumu için net bir hata nesnesi
+            const errorReport = {
               id: uuid,
-              title: 'Shared Report', 
-              description: 'This report could not be loaded. There might be a database schema mismatch.',
-              address: 'Not available',
-              type: 'general',
+              title: 'Report Not Available', 
+              description: 'This report could not be loaded. There might be a database schema error.',
+              address: 'Data unavailable',
+              type: 'error',
               created_at: new Date().toISOString(),
-              creator_name: 'Not available',
-              tenant_name: 'Demo Tenant',
-              tenant_email: 'tenant@example.com',
-              is_archived: false, // Eksik kolon için varsayılan değer
-              approval_status: null, // Varsayılan onay durumu
-              dummy: true
+              creator_name: '',
+              tenant_name: '',
+              tenant_email: '',
+              is_archived: false,
+              approval_status: null,
+              error: true,
+              rooms: [],
+              property: { id: uuid, address: 'Property information not available', property_type: '', description: '' }
             };
-            return { data: dummyReport };
+            return { data: errorReport };
           });
         }
         
-        // Normal hata durumu için dummy rapor
-        const dummyReport = {
+        // Genel API hatası durumunda hata nesnesi döndür
+        const errorReport = {
           id: uuid,
-          title: 'Shared Report', 
-          description: 'This report could not be loaded. The server might be temporarily unavailable.',
-          address: 'Not available',
-          type: 'general',
+          title: 'Report Unavailable', 
+          description: 'Unable to load move-out report data. The server might be temporarily unavailable.',
+          address: 'Data unavailable',
+          type: 'error',
           created_at: new Date().toISOString(),
-          creator_name: 'Not available',
-          tenant_name: 'Demo Tenant',
-          tenant_email: 'tenant@example.com',
-          is_archived: false, // Eksik kolon için varsayılan değer
-          approval_status: null, // Varsayılan onay durumu
-          dummy: true
+          creator_name: '',
+          tenant_name: '',
+          tenant_email: '',
+          is_archived: false,
+          approval_status: null,
+          error: true,
+          rooms: [],
+          property: { id: uuid, address: 'Property information not available', property_type: '', description: '' }
         };
         
-        return { data: dummyReport };
+        return { data: errorReport };
       });
     },
     
@@ -527,11 +556,34 @@ export const apiService = {
     // Yeni eklenen metotlar - Oda fotoğrafları için
     getByRoom: (propertyId, roomId) => {
       console.log(`Getting photos for room ${roomId} in property ${propertyId}`);
-      return api.get(`/api/photos/room/${propertyId}/${roomId}`);
+      
+      // Add detailed debugging for photo retrieval
+      return api.get(`/api/photos/room/${propertyId}/${roomId}`)
+        .then(response => {
+          console.log(`Photos API response for room ${roomId}:`, 
+            response.data ? {
+              count: response.data.length,
+              firstPhoto: response.data.length > 0 ? {
+                id: response.data[0].id,
+                path: response.data[0].path,
+                url: response.data[0].url
+              } : null
+            } : 'No data');
+          return response;
+        })
+        .catch(error => {
+          console.error(`Error getting photos for room ${roomId}:`, error.message);
+          throw error;
+        });
     },
     getByProperty: (propertyId) => {
       console.log(`Getting all photos for property ${propertyId}`);
       return api.get(`/api/photos/property/${propertyId}`);
+    },
+    // Associate a photo with a report
+    associateWithReport: (photoId, reportId, data) => {
+      console.log(`Associating photo ${photoId} with report ${reportId}`);
+      return api.post(`/api/photos/${photoId}/associate/${reportId}`, data);
     },
     // Rapor için fotoğraf yükleme
     upload: (reportId, formData) => {
@@ -574,6 +626,29 @@ export const apiService = {
     requestPasswordReset: (data) => publicApi.post('/api/auth/request-password-reset', data),
     verifyResetCode: (data) => publicApi.post('/api/auth/verify-reset-code', data),
     resetPassword: (data) => publicApi.post('/api/auth/reset-password', data),
+  },
+  
+  // Shopping Cart operations
+  cart: {
+    // Get all available products
+    getProducts: () => api.get('/api/products'),
+    getProductById: (id) => api.get(`/api/products/${id}`),
+    
+    // Cart operations - these interact with the backend if user is logged in
+    // or use local storage fallback if not authenticated
+    getCart: () => api.get('/api/cart'),
+    addToCart: (productId, quantity = 1) => 
+      api.post('/api/cart/items', { product_id: productId, quantity }),
+    updateQuantity: (itemId, quantity) => 
+      api.put(`/api/cart/items/${itemId}`, { quantity }),
+    removeFromCart: (itemId) => 
+      api.delete(`/api/cart/items/${itemId}`),
+    clearCart: () => api.delete('/api/cart'),
+    
+    // Checkout process
+    checkout: (checkoutData) => api.post('/api/cart/checkout', checkoutData),
+    getOrderHistory: () => api.get('/api/orders'),
+    getOrderById: (id) => api.get(`/api/orders/${id}`),
   }
 };
 

@@ -1,7 +1,6 @@
 import { useState, useEffect, useRef } from 'react';
 import { useRouter } from 'next/router';
 import Link from 'next/link';
-import { toast } from 'react-toastify';
 import Layout from '../../../components/Layout';
 import { apiService } from '../../../lib/api';
 import { useAuth } from '../../../lib/auth';
@@ -143,7 +142,7 @@ export default function ReportDetail() {
         errorMessage = error.response.data.message || errorMessage;
       }
       
-      toast.error(errorMessage);
+      console.error(errorMessage);
     } finally {
       setLoading(false);
     }
@@ -217,7 +216,7 @@ export default function ReportDetail() {
         errorMessage = error.response.data.message || errorMessage;
       }
       
-      toast.error(errorMessage);
+      console.error(errorMessage);
       setPhotos([]); // Hata durumunda boş dizi ayarla
     } finally {
       setPhotoLoading(false);
@@ -231,7 +230,7 @@ export default function ReportDetail() {
         await apiService.reports.delete(id);
         console.log('Report deleted');
         
-        toast.success('Report successfully deleted.');
+        console.log('Report successfully deleted.');
         router.push('/reports');
       } catch (error) {
         console.error('Report delete error:', error);
@@ -274,7 +273,7 @@ export default function ReportDetail() {
           console.log('Report archived using archive endpoint');
         }
         
-        toast.success('Report successfully archived.');
+        console.log('Report successfully archived.');
         router.push('/reports');
       } catch (error) {
         console.error('Report archive error:', error);
@@ -299,7 +298,7 @@ export default function ReportDetail() {
         
         // Update photo list
         setPhotos(photos.filter(photo => photo.id !== photoId));
-        toast.success('Photo successfully deleted.');
+        console.log('Photo successfully deleted.');
       } catch (error) {
         console.error('Photo delete error:', error);
         let errorMessage = 'An error occurred while deleting the photo.';
@@ -345,7 +344,7 @@ export default function ReportDetail() {
   const copyShareLink = () => {
     const link = getShareLink();
     if (!link) {
-      toast.error('Cannot create share link: Report UUID is missing.');
+      console.error('Cannot create share link: Report UUID is missing.');
       return;
     }
     
@@ -357,10 +356,10 @@ export default function ReportDetail() {
     const linkToShare = link || fallbackLink;
     
     navigator.clipboard.writeText(linkToShare).then(() => {
-      toast.success('Share link copied!');
+      console.log('Share link copied!');
     }, (err) => {
       console.error('Link copy error:', err);
-      toast.error('Could not copy link.');
+      console.error('Could not copy link.');
     });
   };
 
@@ -368,7 +367,7 @@ export default function ReportDetail() {
   const generatePDF = async () => {
     try {
       setGeneratingPdf(true);
-      toast.info('PDF hazırlanıyor...');
+      console.log('PDF hazırlanıyor...');
 
       console.log('Starting PDF generation with:', {
         report: report ? { id: report.id, uuid: report.uuid, title: report.title } : 'No report',
@@ -462,7 +461,7 @@ export default function ReportDetail() {
         try {
           pdf.save(filename);
           console.log('PDF saved with filename:', filename);
-          toast.success('PDF başarıyla oluşturuldu!');
+          console.log('PDF başarıyla oluşturuldu!');
         } catch (saveError) {
           console.error('Error during PDF save operation:', saveError);
           
@@ -475,7 +474,7 @@ export default function ReportDetail() {
             link.download = filename;
             link.click();
             console.log('Alternative download method executed');
-            toast.success('PDF başarıyla indirildi!');
+            console.log('PDF başarıyla indirildi!');
           } catch (altSaveError) {
             console.error('Alternative save method also failed:', altSaveError);
             throw saveError; // Re-throw original error
@@ -492,7 +491,7 @@ export default function ReportDetail() {
           fallbackPdf.text(`Date: ${new Date().toLocaleDateString()}`, 20, 50);
           
           fallbackPdf.save(`DepositShield_Simple_Report_${new Date().getTime()}.pdf`);
-          toast.warning('Generated a simplified PDF due to an error with the full report.');
+          console.warn('Generated a simplified PDF due to an error with the full report.');
           return;
         } catch (fallbackError) {
           console.error('Even fallback PDF failed:', fallbackError);
@@ -501,7 +500,7 @@ export default function ReportDetail() {
       }
     } catch (error) {
       console.error('Error generating PDF:', error);
-      toast.error(`PDF generation failed: ${error.message || 'Unknown error'}`);
+      console.error(`PDF generation failed: ${error.message || 'Unknown error'}`);
     } finally {
       setGeneratingPdf(false);
     }

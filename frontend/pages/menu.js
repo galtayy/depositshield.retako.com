@@ -153,15 +153,18 @@ export default function Menu() {
           <div className="absolute w-[322px] h-0 left-[10px] top-[64px] border-[1px_solid_#ECF0F5]"></div>
         </div>
         
-        {/* Support Option */}
+        {/* Support Option - Currently non-functional */}
         <div className="w-[342px] h-[64px] flex-none order-3 flex-grow-0 relative">
           <div className="flex flex-row items-center p-[12px_0px] gap-[16px] absolute w-[342px] h-[64px] left-0 top-0">
             <div className="w-[40px] h-[40px] flex items-center justify-center opacity-40 rounded-[225px]">
               <SupportIcon />
             </div>
-            <Link href="/support" className="font-semibold text-[16px] leading-[22px] text-[#111519]">
+            <button 
+              onClick={() => console.log('Support functionality not yet implemented')}
+              className="font-semibold text-[16px] leading-[22px] text-[#111519] text-left"
+            >
               Support
-            </Link>
+            </button>
           </div>
           <div className="absolute w-[322px] h-0 left-[10px] top-[64px] border-[1px_solid_#ECF0F5]"></div>
         </div>

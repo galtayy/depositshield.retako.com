@@ -1,1389 +1,511 @@
-import { useState, useEffect, useRef } from 'react';
+import { useState, useEffect } from 'react';
 import { useRouter } from 'next/router';
-import Link from 'next/link';
-import { toast } from 'react-toastify';
-import PublicLayout from '../../../../components/PublicLayout';
-import { apiService } from '../../../../lib/apiWrapper'; // Debugging wrapper
-import { processSharedReportPhotos } from '../../../../lib/helpers/photoHelper'; // Import photo processing helper
-import { generateSharedReportPDF } from '../../../../lib/simplePdfGenerator';
+import Head from 'next/head';
+import axios from 'axios';
 
-// API base URL - doğru değerlerle güncelleyelim
+// API base URL
 const API_URL = typeof window !== 'undefined' 
   ? window.location.hostname !== 'localhost' 
-    ? 'https://api.depositshield.retako.com/api'
-    : 'http://localhost:5050/api'
-  : 'https://api.depositshield.retako.com/api';
+    ? 'https://api.depositshield.retako.com'
+    : 'http://localhost:5050'
+  : 'https://api.depositshield.retako.com';
+  
+const logApiUrl = () => {
+  if (typeof window !== 'undefined') {
+    console.log('Using API_URL:', API_URL);
+    console.log('Window hostname:', window.location.hostname);
+  }
+};
 
-export default function SharedReportView() {
-  const [report, setReport] = useState(null);
-  const [photos, setPhotos] = useState([]);
-  const [loading, setLoading] = useState(true);
-  const [photoLoading, setPhotoLoading] = useState(true);
-  const [generatingPdf, setGeneratingPdf] = useState(false);
-  const reportRef = useRef(null);
-  // Onay durumu için yerel state - BAŞLAŞGIÇ DEĞERİ NULL OLMALI
-  const [localApprovalStatus, setLocalApprovalStatus] = useState(null);
-  // Rapor güncellendiğini kontrol etmek için state
-  const [reportUpdated, setReportUpdated] = useState(false);
-  const [selectedPhoto, setSelectedPhoto] = useState(null);
-  const [photoModalOpen, setPhotoModalOpen] = useState(false);
-  const [rejectionReason, setRejectionReason] = useState('');
-  const [showRejectionModal, setShowRejectionModal] = useState(false);
+export default function SharedMoveOutReport() {
   const router = useRouter();
   const { uuid } = router.query;
-
-  // Fotoğraf yüklemeleri için yardımcı fonksiyon
-  const fetchImageAsBase64 = async (imageUrl) => {
-    try {
-      console.log('Fetching image:', imageUrl);
-      const response = await fetch(imageUrl, {
-        mode: 'cors',
-        cache: 'no-cache',
-        headers: { 'Accept': 'image/jpeg, image/png, image/*' }
-      });
-      
-      if (!response.ok) {
-        throw new Error(`Image fetch failed: ${response.status}`);
-      }
-      
-      const blob = await response.blob();
-      return new Promise((resolve, reject) => {
-        const reader = new FileReader();
-        reader.onloadend = () => resolve(reader.result);
-        reader.onerror = reject;
-        reader.readAsDataURL(blob);
-      });
-    } catch (error) {
-      console.error('Error fetching image as base64:', error);
-      return null; // Return null on error
-    }
-  };
-
+  
+  const [report, setReport] = useState(null);
+  const [isLoading, setIsLoading] = useState(true);
+  const [propertyInfo, setPropertyInfo] = useState(null);
+  const [rooms, setRooms] = useState([]);
+  const [activeRoomTab, setActiveRoomTab] = useState({});
+  const [propertyDetailsOpen, setPropertyDetailsOpen] = useState(false);
+  const [selectedPhoto, setSelectedPhoto] = useState(null);
+  
   useEffect(() => {
-    if (uuid) {
-      fetchReport();
-    }
-  }, [uuid]);
-
-  // Raporun güncellenmiş olup olmadığını kontrol etme (localStorage ile)
-  useEffect(() => {
-    if (report && uuid) {
-      // Browser'da olduğumuzu kontrol et
-      if (typeof window !== 'undefined') {
-        try {
-          // Önce UUID ile kontrol et
-          const uuidKey = `report_updated_uuid_${uuid}`;
-          const idKey = `report_updated_id_${report.id}`;
-          
-          console.log(`Checking localStorage keys for updates:`);
-          console.log(`- UUID key: ${uuidKey}`);
-          console.log(`- ID key: ${idKey}`);
-          
-          const isUpdatedByUuid = localStorage.getItem(uuidKey) === 'true';
-          const isUpdatedById = localStorage.getItem(idKey) === 'true';
-          
-          // Eğer herhangi bir şekilde güncellendiyse butonları göster
-          if (isUpdatedByUuid || isUpdatedById) {
-            console.log(`Report marked as updated: UUID match=${isUpdatedByUuid}, ID match=${isUpdatedById}`);
-            setReportUpdated(true);
-          } else {
-            console.log('Report has not been marked as updated yet');
-            
-            // Debug: LocalStorage'daki tüm anahtarları göster
-            for (let i = 0; i < localStorage.length; i++) {
-              const key = localStorage.key(i);
-              if (key && key.includes('report_updated')) {
-                console.log(`Found localStorage key: ${key} = ${localStorage.getItem(key)}`);
-              }
-            }
-          }
-        } catch (error) {
-          console.error('Error checking localStorage for report updates:', error);
-        }
-      }
-    }
-  }, [report, uuid]);
-
-  useEffect(() => {
-    if (report) {
-      // Rapor fotoğrafları zaten getirdiyse yeniden çağırmaya gerek yok
-      if (photos.length === 0) {
-        console.log('Photos not included in report response, fetching separately...');
-        fetchPhotos();
-      } else {
-        console.log(`Already have ${photos.length} photos from report response - skipping fetch`);
-      }
-      
-      // Rapor onay durumunu kontrol et - kullanıcı henüz işlem yapmadıysa
-      if (report.approval_status && !localApprovalStatus) {
-        console.log(`Report has existing approval status: ${report.approval_status}`);
-      }
-    }
-  }, [report, photos.length, localApprovalStatus]);
-
+    if (!router.isReady || !uuid) return;
+    
+    // Log API URL for debugging
+    logApiUrl();
+    
+    // Rapor yükleniyor
+    console.log(`[Report Viewer] Fetching report with UUID: ${uuid}`);
+    fetchReport();
+  }, [router.isReady, uuid]);
+  
   const fetchReport = async () => {
     try {
+      setIsLoading(true);
       console.log('Fetching shared report with UUID:', uuid);
       
-      // API'den rapor bilgilerini al
+      // Fetch the report by UUID from the API
       try {
-        const response = await apiService.reports.getByUuid(uuid);
-        console.log('Shared report response:', response.data);
+        // Get report data
+        const reportResponse = await axios.get(`${API_URL}/api/reports/uuid/${uuid}`, {
+          headers: { 'Accept': 'application/json' }
+        });
         
-        // Dummy veri mi kontrol et
-        if (response.data.dummy) {
-          console.warn('Server connection problem, using dummy data');
-          toast.warn('Server is currently unreachable. Using limited data.');
+        const reportData = reportResponse.data;
+        console.log('Report data:', reportData);
+        
+        // Log report baseUrl if provided
+        if (reportData && reportData.baseUrl) {
+          console.log('Report base URL:', reportData.baseUrl);
         }
         
-        // Raporla birlikte fotoğraflar da geldi mi kontrol et
-        if (response.data.photos && Array.isArray(response.data.photos)) {
-          console.log(`Report includes ${response.data.photos.length} photos from API - processing`);
+        // Backend dönüşünde rooms alanı var mı kontrol et
+        if (reportData) {
+          // Rooms direkt olarak API'den geliyorsa kullan
+          const roomsData = reportData.rooms || [];
+          console.log(`Found ${roomsData.length} rooms from API response`);
           
-          // Fotoğraf URL'lerini işle
-          const processedPhotos = processSharedReportPhotos(response.data.photos);
-          
-          // Fotoğraflar olmadan raporu ayarla
-          const { photos: _, ...reportWithoutPhotos } = response.data;
-          
-          // ÖNEMLİ: Burada rapor verisini inceleyelim ve onay durumunu kontrol edelim
-          console.log("-------DEBUG: REPORT DATA-------");
-          console.log("Report approval_status:", reportWithoutPhotos.approval_status);
-          console.log("Report ID:", reportWithoutPhotos.id);
-          console.log("Report Title:", reportWithoutPhotos.title);
-          console.log("All report keys:", Object.keys(reportWithoutPhotos));
-          console.log("--------------------------------");
-          
-          // Rapor verilerini kaydet - onay durumunu temizleyelim
-          if (reportWithoutPhotos.approval_status === 'undefined' || reportWithoutPhotos.approval_status === undefined) {
-            reportWithoutPhotos.approval_status = null;
-          }
-          
-          setReport(reportWithoutPhotos);
-          
-          // İşlenmiş fotoğrafları ayrıca kaydet
-          setPhotos(processedPhotos);
-          setPhotoLoading(false); // Fotoğraf yüklemeyi tamamla
-        } else {
-          // Fotoğraflar yoksa, normal değerleri ayarla
-          setReport(response.data);
-          // Ayrıca fotoğraf API'sini çağırmak için fetchPhotos hala gerçekleşecek
-        }
-      } catch (mainError) {
-        console.error('Standard getByUuid API call failed:', mainError);
-        
-        // Doğrudan alternatif bir URL'den deneme yap
-        try {
-          const axios = (await import('axios')).default;
-          
-          const isProduction = typeof window !== 'undefined' ? window.location.hostname !== 'localhost' : false;
-          const apiBaseUrl = isProduction ? 'https://api.depositshield.retako.com' : 'http://localhost:5050';
-          
-          console.log('Trying direct alternative API URL for report:', apiBaseUrl);
-          const altResponse = await axios.get(`${apiBaseUrl}/api/reports/uuid/${uuid}`);
-          
-          console.log('Direct alternative API call successful:', altResponse.data);
-          setReport(altResponse.data);
-        } catch (altError) {
-          console.error('Direct alternative API call also failed:', altError);
-          
-          // Hata durumunda bile görüntülenebilir bir şeyler gösterelim
-          setReport({
-            id: uuid,
-            title: 'Error Loading Report',
-            description: 'There was a problem loading this report. Please try again later.',
-            type: 'general',
-            address: 'Not available',
-            created_at: new Date().toISOString(),
-            error: true
-          });
-          
-          let errorMessage = 'An error occurred while loading the shared report.';
-          if (altError.response) {
-            console.error('API response error:', altError.response.data);
-            errorMessage = altError.response.data.message || errorMessage;
-          }
-          
-          toast.error(errorMessage);
-        }
-      }
-    } catch (error) {
-      console.error('Unexpected error in fetchReport:', error);
-      toast.error('An unexpected error occurred. Please try again later.');
-      
-      setReport({
-        id: uuid,
-        title: 'Error Loading Report',
-        description: 'There was a problem loading this report. Please try again later.',
-        type: 'general',
-        address: 'Not available',
-        created_at: new Date().toISOString(),
-        error: true
-      });
-    } finally {
-      setLoading(false);
-    }
-  };
-
-  const fetchPhotos = async () => {
-    try {
-      // Rapor dummy veya hatalı ise fotoğraf yüklenmesine gerek yok
-      if (report.dummy || report.error) {
-        console.log('Report is dummy/error data, skipping photo fetch');
-        setPhotos([]);
-        setPhotoLoading(false);
-        return;
-      }
-      
-      console.log('Fetching photos for shared report:', report.id);
-      
-      try {
-        // Önce normal API call deneyin
-        const response = await apiService.photos.getByReport(report.id);
-        console.log('Photos response:', response.data);
-        
-        // Yanıtı kontrol et
-        if (Array.isArray(response.data)) {
-          console.log(`Received ${response.data.length} photos`);
-          // Her fotoğraf için temel validasyon yap
-          const validPhotos = response.data.filter(photo => {
-            if (!photo || !photo.id) {
-              console.warn('Skipping invalid photo object', photo);
-              return false;
-            }
-            return true;
-          });
-          
-          // URL bilgilerini logla
-          validPhotos.forEach((photo, index) => {
-            console.log(`Photo ${index + 1}:`, photo);
-            console.log(`Original URL: ${photo.url || 'not available'}`);
-          });
-          
-          setPhotos(validPhotos);
-        } else {
-          console.error('Invalid photos data format:', response.data);
-          setPhotos([]);
-        }
-      } catch (mainError) {
-        console.error('Standard photos API call failed:', mainError);
-        
-        // Alternatif yöntem: Doğrudan axios kullan
-        try {
-          const axios = (await import('axios')).default;
-          
-          const isProduction = typeof window !== 'undefined' ? window.location.hostname !== 'localhost' : false;
-          const apiBaseUrl = isProduction ? 'https://api.depositshield.retako.com' : 'http://localhost:5050';
-          
-          console.log('Trying direct alternative API URL for photos:', apiBaseUrl);
-          const altResponse = await axios.get(`${apiBaseUrl}/api/photos/report/${report.id}`, {
-            headers: {
-              'Content-Type': 'application/json',
-              'Accept': 'application/json'
-            }
-          });
-          
-          console.log('Alternative photos API call successful:', altResponse.data);
-          
-          if (Array.isArray(altResponse.data)) {
-            // Her fotoğraf için temel validasyon yap
-            const validPhotos = altResponse.data.filter(photo => {
-              if (!photo || !photo.id) {
-                console.warn('Skipping invalid photo object', photo);
-                return false;
+          // Log rooms ve fotoğraflarını (debug için)
+          if (roomsData.length > 0) {
+            roomsData.forEach(room => {
+              console.log(`Room ${room.name}: ${room.photos ? room.photos.length : 0} photos`);
+              if (room.photos && room.photos.length > 0) {
+                room.photos.forEach((photo, i) => {
+                  console.log(`Room ${room.name} Photo ${i+1}:`, photo);
+                });
               }
-              return true;
             });
-            
-            setPhotos(validPhotos);
-          } else {
-            console.error('Invalid photos data format from alternative API:', altResponse.data);
-            setPhotos([]);
           }
-        } catch (altError) {
-          console.error('Alternative photos API call also failed:', altError);
-          setPhotos([]); // Hata durumunda boş array
-        }
-      }
-    } catch (error) {
-      console.error('Photos fetch error:', error);
-      setPhotos([]); // Hata durumunda boş array
-      
-      // Kimlik doğrulama hatası değilse hata mesajı göster
-      if (!(error.response && error.response.status === 401)) {
-        let errorMessage = 'An error occurred while loading photos.';
-        if (error.response) {
-          console.error('API response error:', error.response.data);
-          errorMessage = error.response.data.message || errorMessage;
-        }
-        toast.error(errorMessage);
-      }
-    } finally {
-      setPhotoLoading(false);
-    }
-  };
-
-  // Helper function to display role badge
-  const getRoleBadge = (role) => {
-    if (role === 'landlord') {
-      return <span className="badge-landlord">Landlord</span>;
-    } else if (role === 'renter') {
-      return <span className="badge-tenant">Tenant</span>;
-    } else {
-      return null;
-    }
-  };
-  
-  // Handle report approval
-  const handleApproveReport = async () => {
-    try {
-      setLoading(true);
-      console.log('Rapor onaylanıyor...');
-      
-      try {
-        // Raporu onayla
-        await apiService.reports.approve(report.id, {
-          status: 'approved',
-          message: 'Report has been approved by the landlord.',
-          uuid: uuid // UUID iletilerek kimlik doğrulamadan geçebilir
-        });
-        
-        // Bildirim gönder
-        await apiService.reports.sendNotification(report.id, {
-          recipientEmail: report.tenant_email || report.creator_email, 
-          recipientName: report.tenant_name || report.creator_name, 
-          subject: 'Your property report has been approved',
-          message: `The property report for ${report.address} has been approved by the landlord.`,
-          reportId: report.id,
-          reportUuid: report.uuid,
-          status: 'approved'
-        });
-        
-        // Yerel state'i güncelle
-        setLocalApprovalStatus('approved');
-        
-        // Raporu da güncelle (UI için)
-        setReport(prev => ({
-          ...prev,
-          approval_status: 'approved',
-          approved_at: new Date().toISOString()
-        }));
-        
-        toast.success('Report has been approved. A notification email has been sent to the tenant.');
-      } catch (apiError) {
-        console.error('API çağrısı başarısız!', apiError);
-        
-        // UI'yi yine de güncelle
-        setLocalApprovalStatus('approved');
-        toast.success('Report has been approved successfully.');
-      }
-    } catch (error) {
-      console.error('Report approval error:', error);
-      toast.error('Sorry, there was an issue with the approval process.');
-    } finally {
-      setLoading(false);
-    }
-  };
-  
-  // Handle report rejection
-  const handleRejectReport = async () => {
-    try {
-      setLoading(true);
-      console.log('Rapor reddediliyor...');
-      
-      try {
-        // Raporu reddet
-        await apiService.reports.reject(report.id, {
-          status: 'rejected',
-          message: 'Report has been rejected by the landlord.',
-          uuid: uuid // UUID iletilerek kimlik doğrulamadan geçebilir
-        });
-        
-        // Bildirim gönder
-        await apiService.reports.sendNotification(report.id, {
-          recipientEmail: report.tenant_email || report.creator_email, 
-          recipientName: report.tenant_name || report.creator_name, 
-          subject: 'Your property report has been rejected',
-          message: `The property report for ${report.address} has been rejected by the landlord.`,
-          reportId: report.id,
-          reportUuid: report.uuid,
-          status: 'rejected'
-        });
-        
-        // Yerel state'i güncelle
-        setLocalApprovalStatus('rejected');
-        
-        // Raporu da güncelle (UI için)
-        setReport(prev => ({
-          ...prev,
-          approval_status: 'rejected',
-          rejected_at: new Date().toISOString()
-        }));
-        
-        toast.success('Report has been rejected. A notification email has been sent to the tenant.');
-      } catch (apiError) {
-        console.error('API çağrısı başarısız!', apiError);
-        
-        // UI'yi yine de güncelle
-        setLocalApprovalStatus('rejected');
-        toast.success('Report has been rejected successfully.');
-      }
-    } catch (error) {
-      console.error('Report rejection error:', error);
-      toast.error('Sorry, there was an issue with the rejection process.');
-    } finally {
-      setLoading(false);
-    }
-  };
-
-  const getReportTypeBadge = (type) => {
-    if (!type) return null;
-    
-    switch (type) {
-      case 'move-in':
-        return <span className="inline-flex items-center px-2 py-1 text-xs font-medium rounded-full bg-green-100 text-green-800">Pre-Move-In</span>;
-      case 'move-out':
-        return <span className="inline-flex items-center px-2 py-1 text-xs font-medium rounded-full bg-red-100 text-red-800">Post-Move-Out</span>;
-      case 'general':
-        return <span className="inline-flex items-center px-2 py-1 text-xs font-medium rounded-full bg-blue-100 text-blue-800">General</span>;
-      default:
-        return null;
-    }
-  };
-  
-  // Manuel olarak butonları göstermeyi tetiklemek için
-  const forceShowButtons = () => {
-    setReportUpdated(true);
-    localStorage.setItem(`report_updated_uuid_${uuid}`, 'true');
-    localStorage.setItem(`report_updated_id_${report.id}`, 'true');
-    toast.success('Buttons have been enabled for testing.');
-  }
-  
-  // Reddetme modalını açma
-  const openRejectionModal = () => {
-    setRejectionReason('');
-    setShowRejectionModal(true);
-  };
-  
-  // Reddetme modalını kapatma
-  const closeRejectionModal = () => {
-    setShowRejectionModal(false);
-  };
-  
-  // Reddetme nedenini işleme
-  const handleRejectWithReason = async () => {
-    if (!rejectionReason.trim()) {
-      toast.error('Please provide a reason for rejection.');
-      return;
-    }
-    
-    try {
-      setLoading(true);
-      console.log('Rapor reddediliyor, sebep:', rejectionReason);
-      
-      try {
-        // Raporu reddet
-        await apiService.reports.reject(report.id, {
-          status: 'rejected',
-          message: rejectionReason,
-          uuid: uuid // UUID iletilerek kimlik doğrulamadan geçebilir
-        });
-        
-        // Bildirim gönder
-        await apiService.reports.sendNotification(report.id, {
-          recipientEmail: report.tenant_email || report.creator_email, 
-          recipientName: report.tenant_name || report.creator_name, 
-          subject: 'Your property report has been rejected',
-          message: `The property report for ${report.address} has been rejected by the landlord. Reason: ${rejectionReason}`,
-          reportId: report.id,
-          reportUuid: report.uuid,
-          status: 'rejected'
-        });
-        
-        // Yerel state'i güncelle
-        setLocalApprovalStatus('rejected');
-        
-        // Raporu da güncelle (UI için)
-        setReport(prev => ({
-          ...prev,
-          approval_status: 'rejected',
-          rejected_at: new Date().toISOString(),
-          rejection_message: rejectionReason
-        }));
-        
-        // Modalı kapat
-        setShowRejectionModal(false);
-        
-        toast.success('Report has been rejected. A notification email has been sent to the tenant.');
-      } catch (apiError) {
-        console.error('API çağrısı başarısız!', apiError);
-        
-        // UI'yi yine de güncelle
-        setLocalApprovalStatus('rejected');
-        setShowRejectionModal(false);
-        toast.success('Report has been rejected successfully.');
-      }
-    } catch (error) {
-      console.error('Report rejection error:', error);
-      toast.error('Sorry, there was an issue with the rejection process.');
-    } finally {
-      setLoading(false);
-    }
-  };
-  
-  // Fotoğraf büyütme için fonksiyonlar
-  const openPhotoModal = (photo) => {
-    setSelectedPhoto(photo);
-    setPhotoModalOpen(true);
-  };
-  
-  const closePhotoModal = () => {
-    setPhotoModalOpen(false);
-    setSelectedPhoto(null);
-  };
-
-  // Generate and download PDF
-  const generatePDF = async () => {
-    try {
-      setGeneratingPdf(true);
-      toast.info('PDF hazırlanıyor...');
-
-      console.log('Starting PDF generation with:', {
-        report: report ? { id: report.id, uuid: report.uuid, title: report.title } : 'No report',
-        photosCount: photos ? photos.length : 'No photos',
-        localApprovalStatus
-      });
-
-      // Dinamik olarak jsPDF modülünü import et
-      const jspdfModule = await import('jspdf');
-      const { jsPDF } = jspdfModule;
-      
-      // Önce basit bir PDF oluşturarak test et
-      const testPdf = new jsPDF();
-      testPdf.text('Test PDF Generation', 10, 10);
-      console.log('Test PDF created successfully');
-      
-      // Asıl PDF oluşturmayı dene
-      try {
-        // Veri kontrolü
-        if (!report) {
-          throw new Error('Report data is missing');
-        }
-        
-        // Fotoğraf resimlerini hazırla
-        let enhancedPhotos = [];
-        if (photos && photos.length > 0) {
-        console.log('Processing photos for PDF...');
-        
-        // Her türlü oda için fotoğrafları işle
-        const photoMap = new Map();
-        for (let photo of photos) {
-          try {
-            if (photo && photo.url) {
-            const isProduction = typeof window !== 'undefined' ? window.location.hostname !== 'localhost' : false;
-          const baseApiUrl = isProduction ? 'https://api.depositshield.retako.com' : 'http://localhost:5050';
-        
-        // URL'yi düzgün bir şekilde oluştur
-        let imgUrl = photo.url;
-        if (!imgUrl.startsWith('http')) {
-          if (imgUrl.startsWith('/')) {
-            imgUrl = `${baseApiUrl}${imgUrl}`;
-        } else {
-        imgUrl = `${baseApiUrl}/uploads/${imgUrl}`;
-        }
-        }
-        
-        // Fotoğrafın ait olduğu odayı belirle
-        let roomType = 'Other';
-        if (photo.tags && photo.tags.length > 0) {
-          roomType = photo.tags[0];
-        }
-        
-        // Her oda türü için en fazla 2 fotoğraf işle
-        const existingCount = photoMap.get(roomType) || 0;
-        if (existingCount < 2) {
-          console.log(`Fetching image for ${roomType}:`, imgUrl);
-            const base64Image = await fetchImageAsBase64(imgUrl);
-              if (base64Image) {
-              photo.base64 = base64Image;
-                photoMap.set(roomType, existingCount + 1);
-                  enhancedPhotos.push(photo);
-                  console.log(`Successfully loaded image for ${roomType}`);
-                } else {
-                  console.log(`Failed to load image for ${roomType}`);
-                  }
-                  }
+          
+          // Ayrıca reportData.photos varsa, onları da odalarla birleştir
+          if (reportData.photos && reportData.photos.length > 0) {
+            console.log(`Found ${reportData.photos.length} photos at report level, distributing to rooms`);
+            
+            reportData.photos.forEach(photo => {
+              // Her fotoğrafın oda ID'sine göre odaya ekle
+              if (photo.room_id) {
+                const room = roomsData.find(r => r.id === photo.room_id);
+                if (room) {
+                  // Odaya fotoğraf ekle
+                  if (!room.photos) room.photos = [];
+                  room.photos.push(photo);
+                  console.log(`Added photo ${photo.id} to room ${room.name}`);
                 }
-              } catch (photoError) {
-                console.error('Error processing photo for PDF:', photoError);
               }
-            }
-            
-            console.log('Enhanced photos with base64 data:', enhancedPhotos.length, 'from rooms:', [...photoMap.keys()]);
+            });
           }
-
-        // Call enhanced PDF generation function
-        const pdf = await generateSharedReportPDF(report, enhancedPhotos, localApprovalStatus);
-        
-        if (!pdf) {
-          throw new Error('PDF generation returned null');
-        }
-        
-        // Güvenli dosya adı oluştur
-        const safeId = (report.id || uuid || 'unknown').toString().replace(/[^a-z0-9]/gi, '_');
-        const timestamp = new Date().toISOString().slice(0,10);
-        const filename = `DepositShield_Report_${safeId}_${timestamp}.pdf`;
-        
-        console.log('PDF generated, saving with filename:', filename);
-        
-        // Download the PDF
-        console.log('PDF generated successfully, starting download');
-        try {
-          pdf.save(filename);
-          console.log('PDF saved with filename:', filename);
-          toast.success('PDF başarıyla oluşturuldu!');
-        } catch (saveError) {
-          console.error('Error during PDF save operation:', saveError);
           
-          // Alternative download method using data URI
-          try {
-            console.log('Trying alternative PDF download method');
-            const pdfOutput = pdf.output('datauristring');
-            const link = document.createElement('a');
-            link.href = pdfOutput;
-            link.download = filename;
-            link.click();
-            console.log('Alternative download method executed');
-            toast.success('PDF başarıyla indirildi!');
-          } catch (altSaveError) {
-            console.error('Alternative save method also failed:', altSaveError);
-            throw saveError; // Re-throw original error
-          }
-        }
-      } catch (pdfError) {
-        console.error('Detailed PDF generation error:', pdfError);
-        // Fallback basit PDF
-        try {
-          const fallbackPdf = new jsPDF();
-          fallbackPdf.text('DepositShield Report (Simplified Version)', 20, 20);
-          fallbackPdf.text('There was an error generating the full report.', 20, 30);
-          fallbackPdf.text(`Report ID: ${report?.id || uuid || 'Unknown'}`, 20, 40);
-          fallbackPdf.text(`Date: ${new Date().toLocaleDateString()}`, 20, 50);
+          // Eğer odalar API'den geliyorsa fotoğrafları da zaten içeriyor olmalı
+          // Set the report data and rooms
+          setReport(reportData);
+          setPropertyInfo(reportData.property);
+          setRooms(roomsData);
           
-          fallbackPdf.save(`DepositShield_Simple_Report_${new Date().getTime()}.pdf`);
-          toast.warning('Generated a simplified PDF due to an error with the full report.');
+          // Initialize active tab for each room
+          const initialActiveRoomTab = {};
+          roomsData.forEach(room => {
+            initialActiveRoomTab[room.id] = 'photos';
+          });
+          setActiveRoomTab(initialActiveRoomTab);
+          
+          setIsLoading(false);
           return;
-        } catch (fallbackError) {
-          console.error('Even fallback PDF failed:', fallbackError);
-          throw pdfError; // Rethrow the original error
         }
+      } catch (reportError) {
+        console.error('Failed to fetch report:', reportError);
       }
+      
+      // Rapor verisini API'den alamadık, hata göster ve kullanıcıyı bilgilendir
+      console.warn('API error or data not available for this report');
+      const reportData = {
+        id: uuid,
+        title: 'Report Not Available',
+        type: 'error',
+        address: 'Report data could not be loaded',
+        description: 'Unable to load move-out report details',
+        created_at: new Date().toISOString(),
+        property: {
+          id: uuid,
+          address: 'Property information not available',
+          property_type: '',
+          description: ''
+        },
+        tenant: {
+          name: '',
+          email: '',
+          phone: ''
+        },
+        landlord: {
+          name: '',
+          email: '',
+          phone: ''
+        },
+        rooms: []
+      };
+      
+      // Kullanıcıya gösterilecek bir hata mesajı
+      console.error('Report data could not be loaded. Please try again or contact support.');
+      
+      setReport(reportData);
+      setPropertyInfo(reportData.property);
+      setRooms(reportData.rooms);
+      
+      // Initialize active tab for each room
+      const initialActiveRoomTab = {};
+      reportData.rooms.forEach(room => {
+        initialActiveRoomTab[room.id] = 'photos';
+      });
+      setActiveRoomTab(initialActiveRoomTab);
+      
+      setIsLoading(false);
     } catch (error) {
-      console.error('Error generating PDF:', error);
-      toast.error(`PDF generation failed: ${error.message || 'Unknown error'}`);
-    } finally {
-      setGeneratingPdf(false);
+      console.error('Error fetching report:', error);
+      setIsLoading(false);
     }
   };
-
-  if (loading) {
+  
+  // Get photo URL - handles various photo object structures
+  const getPhotoUrl = (photo) => {
+    if (!photo) return 'https://via.placeholder.com/300x200?text=No+Photo';
+    
+    console.log('Processing photo:', photo);
+    
+    // Basit direktif - öncelikle her fotoğraf objesi için tüm yolları dene
+    try {
+      // Direct URL property
+      if (photo.url) {
+        // Eğer url /uploads ile başlıyorsa önüne API_URL ekle
+        if (photo.url.startsWith('/uploads')) {
+          return `${API_URL}${photo.url}`;
+        }
+        return photo.url;
+      }
+      
+      // file_path property (Backend'den gelen en güvenilir yöntem)
+      if (photo.file_path) {
+        console.log(`Constructing URL from file_path: ${photo.file_path}`);
+        return `${API_URL}/uploads/${photo.file_path}`;
+      }
+      
+      // id property - genelde çalışan bir yöntem 
+      if (photo.id && typeof photo.id === 'number') {
+        console.log(`Constructing URL from photo ID: ${photo.id}`);
+        return `${API_URL}/api/photos/${photo.id}/public`;
+      }
+      
+      // Path property (common in API responses)
+      if (photo.path) {
+        // If path already contains http/https, return as is
+        if (photo.path.startsWith('http')) return photo.path;
+        // Otherwise, construct URL from API base
+        return `${API_URL}/${photo.path.replace(/^\//, '')}`;
+      }
+      
+      // Filename property
+      if (photo.filename) return `${API_URL}/uploads/${photo.filename}`;
+      
+      // If photo is just a string (path or URL)
+      if (typeof photo === 'string') {
+        if (photo.startsWith('http')) return photo;
+        return `${API_URL}/${photo.replace(/^\//, '')}`;
+      }
+    } catch (error) {
+      console.error('Error constructing photo URL:', error);
+    }
+    
+    // Fallback
+    console.log('Falling back to placeholder for photo:', photo);
+    return 'https://via.placeholder.com/300x200?text=Error+Loading';
+  };
+  
+  // Toggle tabs
+  const toggleRoomTab = (roomId, tab) => {
+    setActiveRoomTab(prev => ({
+      ...prev,
+      [roomId]: tab
+    }));
+  };
+  
+  if (isLoading) {
     return (
-      <PublicLayout>
-        <div className="container mx-auto px-4 py-8">
-          <h1 className="text-2xl font-bold mb-6">Shared Report</h1>
-          <div className="flex justify-center items-center py-12">
-            <div className="animate-spin rounded-full h-12 w-12 border-t-2 border-b-2 border-primary"></div>
-          </div>
-        </div>
-      </PublicLayout>
+      <div className="flex justify-center items-center min-h-screen bg-[#FBF5DA]">
+        <div className="animate-spin rounded-full h-12 w-12 border-b-2 border-[#1C2C40]"></div>
+      </div>
     );
   }
-
-  if (!report) {
+  
+  if (!report || report.error) {
     return (
-      <PublicLayout>
-        <div className="container mx-auto px-4 py-8">
-          <h1 className="text-2xl font-bold mb-6">Report Not Found</h1>
-          <div className="bg-white dark:bg-gray-800 rounded-lg shadow-md p-6">
-            <p className="text-gray-600 dark:text-gray-400 mb-4">The shared report you are looking for does not exist or has been removed.</p>
-            <Link href="/" className="btn btn-primary">
-              Go to Homepage
-            </Link>
-          </div>
-        </div>
-      </PublicLayout>
+      <div className="flex flex-col items-center justify-center min-h-screen bg-[#FBF5DA] px-4">
+        <svg className="w-16 h-16 text-gray-400 mb-4" fill="none" stroke="currentColor" viewBox="0 0 24 24" xmlns="http://www.w3.org/2000/svg">
+          <path strokeLinecap="round" strokeLinejoin="round" strokeWidth={2} d="M9 12h6m-6 4h6m2 5H7a2 2 0 01-2-2V5a2 2 0 012-2h5.586a1 1 0 01.707.293l5.414 5.414a1 1 0 01.293.707V19a2 2 0 01-2 2z" />
+        </svg>
+        <h1 className="text-xl font-bold text-[#1C2C40] mb-4">Report Not Available</h1>
+        <p className="text-[#515964] text-center mb-6">
+          {report && report.error ? report.description : "The report you are looking for could not be found. The link may be invalid or the report has been deleted."}
+        </p>
+        <button 
+          onClick={() => window.history.back()}
+          className="px-4 py-2 bg-[#3B7145] text-white rounded-md hover:bg-[#2A5A32] transition-colors"
+        >
+          Go Back
+        </button>
+      </div>
     );
   }
 
   return (
-    <PublicLayout>
-      <div className="container mx-auto px-4 py-8">
-        <div className="mb-6">
-          <div className="flex flex-col sm:flex-row justify-between items-start sm:items-center gap-3 mb-1">
-            <div className="flex items-center gap-2">
-              <h1 className="text-2xl font-bold">Shared Report</h1>
-              {getReportTypeBadge(report.type)}
-            </div>
+    <div className="relative w-full min-h-screen max-w-[390px] mx-auto bg-[#FBF5DA] font-['Nunito']">
+      {/* Photo Lightbox */}
+      {selectedPhoto && (
+        <div 
+          className="fixed inset-0 z-50 flex items-center justify-center bg-black bg-opacity-80 p-4"
+          onClick={() => setSelectedPhoto(null)}
+        >
+          <div className="relative max-w-full max-h-full">
+            <img 
+              src={selectedPhoto.url} 
+              alt={selectedPhoto.alt}
+              className="max-w-full max-h-[90vh] object-contain"
+            />
             <button 
-              onClick={generatePDF}
-              disabled={generatingPdf}
-              className="btn btn-primary flex items-center py-1 px-3 w-full sm:w-auto justify-center"
+              className="absolute top-2 right-2 w-8 h-8 flex items-center justify-center bg-white bg-opacity-70 rounded-full"
+              onClick={(e) => {
+                e.stopPropagation();
+                setSelectedPhoto(null);
+              }}
             >
-              <svg xmlns="http://www.w3.org/2000/svg" className="h-4 w-4 mr-1" fill="none" viewBox="0 0 24 24" stroke="currentColor">
-                <path strokeLinecap="round" strokeLinejoin="round" strokeWidth={2} d="M12 10v6m0 0l-3-3m3 3l3-3m2 8H7a2 2 0 01-2-2V5a2 2 0 012-2h5.586a1 1 0 01.707.293l5.414 5.414a1 1 0 01.293.707V19a2 2 0 01-2 2z" />
+              <svg width="16" height="16" viewBox="0 0 16 16" fill="none" xmlns="http://www.w3.org/2000/svg">
+                <path d="M12 4L4 12" stroke="#0B1420" strokeWidth="1.5" strokeLinecap="round" strokeLinejoin="round"/>
+                <path d="M4 4L12 12" stroke="#0B1420" strokeWidth="1.5" strokeLinecap="round" strokeLinejoin="round"/>
               </svg>
-              {generatingPdf ? 'Generating...' : 'Download PDF'}
             </button>
           </div>
-          <p className="text-gray-600 dark:text-gray-400">
-            Viewing a shared property report
-          </p>
         </div>
-        
-        {/* Report Information */}
-        <div ref={reportRef} className="bg-white dark:bg-gray-800 rounded-lg shadow-md p-6 mb-6">
-        <div className="mb-1">
-        <div className="flex items-center gap-2 mb-1">
-        <h2 className="text-xl font-semibold">{report.title || 'Shared Report'}</h2>
-        {report.type ? getReportTypeBadge(report.type) : null}
+      )}
+      <Head>
+        <title>Move-Out Report - DepositShield</title>
+        <meta name="viewport" content="width=device-width, initial-scale=1.0, maximum-scale=1.0, user-scalable=no, viewport-fit=cover" />
+        <meta name="theme-color" content="#FBF5DA" />
+        <meta name="apple-mobile-web-app-capable" content="yes" />
+      </Head>
+      
+      {/* Status Bar Space */}
+      <div className="w-full h-[40px]"></div>
+      
+      {/* Title + Subtext */}
+      <div className="flex flex-col items-start px-5 gap-1 mt-[32px]">
+        <div className="flex flex-row items-center justify-between w-full">
+          <h1 className="font-bold text-[20px] leading-[27px] text-[#0B1420]">
+            Walkthrough Details
+          </h1>
+          <button className="p-1">
+            <svg width="24" height="24" viewBox="0 0 24 24" fill="none" xmlns="http://www.w3.org/2000/svg">
+              <path d="M16.75 22.16c-.41 0-.75-.34-.75-.75v-2.04c0-.36.06-.7.17-1.01l.07-.2c.05-.12.1-.25.15-.37.43-1.01 1.32-1.99 3.05-3.35l.3-.23c.51-.4.81-1.01.81-1.65v-2.6c0-.89-.26-1.75-.76-2.48C19.21 6.64 18.21 6 17.09 6H7c-1.06 0-2.02.57-2.55 1.48-.52.91-.52 2.03 0 2.95.53.92 1.49 1.48 2.55 1.48.41 0 .75.34.75.75s-.34.75-.75.75c-1.47 0-2.81-.79-3.56-2.06-.76-1.29-.76-2.86 0-4.15C4.19 5.89 5.53 5.1 7 5.1h10.09c1.49 0 2.86.86 3.55 2.19.63.93.97 2.03.97 3.19v2.6c0 1.11-.54 2.17-1.44 2.83l-.3.24c-1.56 1.23-2.33 2.04-2.66 2.79-.03.07-.07.15-.1.22l-.06.18c-.05.15-.08.31-.08.47v2.04c.04.42-.3.76-.72.76z" fill="#292D32"/>
+              <path d="M12 18.75c-.42 0-.75-.33-.75-.75v-4.25c0-.41.33-.75.75-.75s.75.34.75.75V18c0 .42-.33.75-.75.75zM12 8.25c-.41 0-.75-.34-.75-.75s.34-.75.75-.75.75.33.75.75-.34.75-.75.75z" fill="#292D32"/>
+            </svg>
+          </button>
         </div>
-        <div className="flex items-center gap-1 text-gray-600 dark:text-gray-400 text-sm">
-        <svg xmlns="http://www.w3.org/2000/svg" className="h-4 w-4" fill="none" viewBox="0 0 24 24" stroke="currentColor">
-        <path strokeLinecap="round" strokeLinejoin="round" strokeWidth={2} d="M8 7V3m8 4V3m-9 8h10M5 21h14a2 2 0 002-2V7a2 2 0 00-2-2H5a2 2 0 00-2 2v12a2 2 0 002 2z" />
-        </svg>
-        <p>
-        <span className="font-medium">Shared on: </span>
-        {report.created_at ? (
-        <>
-        {new Date(report.created_at).toLocaleDateString('en-US', {
-        year: 'numeric',
-        month: 'long',
-        day: 'numeric',
-        })}
-        {' at '}
-        {new Date(report.created_at).toLocaleTimeString('en-US', {
-        hour: '2-digit',
-        minute: '2-digit',
-        hour12: true
-        })}
-        </>
-        ) : (
-        'Date not available'
-        )}
+        <p className="font-normal text-[14px] leading-[19px] text-[#515964]">
+          Move-out details uploaded by the tenant
         </p>
-        </div>
-        <p className="text-gray-600 dark:text-gray-400 text-sm mt-1">
-        {report.creator_name ? (
-        <span><span className="font-medium">Created by: </span>{report.creator_name}</span>
-        ) : null}
-        {report.role_at_this_property ? (
-        <span className="ml-2">{getRoleBadge(report.role_at_this_property)}</span>
-        ) : null}
-        </p>
-        </div>
-        
-        {/* Onay Durumu Bilgisi - Sadece geçerli bir onay durumu olduğunda göster */}
-        {((report.approval_status === 'approved' || report.approval_status === 'rejected') || 
-           (localApprovalStatus === 'approved' || localApprovalStatus === 'rejected')) && (
-        <div className="my-4 p-4 rounded-lg bg-gray-50 dark:bg-gray-700 border-l-4 border-blue-500">
-        <div className="flex items-start">
-        <div className={`rounded-full p-1 mr-3 ${(report.approval_status === 'approved' || localApprovalStatus === 'approved') ? 'bg-green-100 text-green-600' : 'bg-red-100 text-red-600'}`}>
-        {(report.approval_status === 'approved' || localApprovalStatus === 'approved') ? (
-        <svg xmlns="http://www.w3.org/2000/svg" className="h-5 w-5" fill="none" viewBox="0 0 24 24" stroke="currentColor">
-        <path strokeLinecap="round" strokeLinejoin="round" strokeWidth={2} d="M5 13l4 4L19 7" />
-        </svg>
-        ) : (
-        <svg xmlns="http://www.w3.org/2000/svg" className="h-5 w-5" fill="none" viewBox="0 0 24 24" stroke="currentColor">
-        <path strokeLinecap="round" strokeLinejoin="round" strokeWidth={2} d="M6 18L18 6M6 6l12 12" />
-        </svg>
-        )}
-        </div>
-        <div>
-        <h3 className="font-medium">
-        {(report.approval_status === 'approved' || localApprovalStatus === 'approved') ? 'Report Approved' : 'Report Rejected'}
-        </h3>
-        <p className="text-sm text-gray-600 dark:text-gray-400">
-        {(report.approval_status === 'approved' || localApprovalStatus === 'approved') ? 
-        `This report was approved ${report.approved_at ? `on ${new Date(report.approved_at).toLocaleString()}` : 'by the landlord'}` : 
-        `This report was rejected ${report.rejected_at ? `on ${new Date(report.rejected_at).toLocaleString()}` : 'by the landlord'}`
-        }
-        </p>
-        {(report.approval_status === 'approved' && report.approved_message) && (
-        <p className="mt-1 text-sm text-gray-600 dark:text-gray-400">Message: {report.approved_message}</p>
-        )}
-        {(report.approval_status === 'rejected' && report.rejection_message) && (
-        <p className="mt-1 text-sm text-gray-600 dark:text-gray-400">Message: {report.rejection_message}</p>
-        )}
-        </div>
-        </div>
-        </div>
-        )}
-          
-          <div className="mb-6">
-            <h3 className="font-medium text-gray-700 dark:text-gray-300 mb-1">Property Address</h3>
-            <p className="text-gray-900 dark:text-gray-100">{report.address || 'Address not available'}</p>
-          </div>
-          
-          {/* Raporu Oluşturan Kiracı Bilgileri */}
-          <div className="mb-6">
-            <h3 className="font-medium text-gray-700 dark:text-gray-300 mb-1">Reported By (Tenant)</h3>
-            <div className="space-y-2">
-              <p className="flex items-center text-gray-900 dark:text-gray-100">
-                <svg xmlns="http://www.w3.org/2000/svg" className="h-4 w-4 mr-2 text-indigo-500" fill="none" viewBox="0 0 24 24" stroke="currentColor">
-                  <path strokeLinecap="round" strokeLinejoin="round" strokeWidth={2} d="M16 7a4 4 0 11-8 0 4 4 0 018 0zM12 14a7 7 0 00-7 7h14a7 7 0 00-7-7z" />
-                </svg>
-                {report.creator_name || report.tenant_name || 'Not provided'}
-              </p>
-              {(report.creator_email || report.tenant_email) && (
-                <p className="flex items-center text-gray-900 dark:text-gray-100">
-                  <svg xmlns="http://www.w3.org/2000/svg" className="h-4 w-4 mr-2 text-indigo-500" fill="none" viewBox="0 0 24 24" stroke="currentColor">
-                    <path strokeLinecap="round" strokeLinejoin="round" strokeWidth={2} d="M3 8l7.89 5.26a2 2 0 002.22 0L21 8M5 19h14a2 2 0 002-2V7a2 2 0 00-2-2H5a2 2 0 00-2 2v12a2 2 0 002 2z" />
-                  </svg>
-                  {report.creator_email || report.tenant_email}
-                </p>
-              )}
-              {(report.creator_phone || report.tenant_phone) && (
-                <p className="flex items-center text-gray-900 dark:text-gray-100">
-                  <svg xmlns="http://www.w3.org/2000/svg" className="h-4 w-4 mr-2 text-indigo-500" fill="none" viewBox="0 0 24 24" stroke="currentColor">
-                    <path strokeLinecap="round" strokeLinejoin="round" strokeWidth={2} d="M3 5a2 2 0 012-2h3.28a1 1 0 01.948.684l1.498 4.493a1 1 0 01-.502 1.21l-2.257 1.13a11.042 11.042 0 005.516 5.516l1.13-2.257a1 1 0 011.21-.502l4.493 1.498a1 1 0 01.684.949V19a2 2 0 01-2 2h-1C9.716 21 3 14.284 3 6V5z" />
-                  </svg>
-                  {report.creator_phone || report.tenant_phone}
-                </p>
-              )}
-            </div>
-          </div>
-          
-          {report.description ? (
-            <div className="mb-6">
-              <h3 className="font-medium text-gray-700 dark:text-gray-300 mb-1">Report Description</h3>
-              <p className="text-gray-900 dark:text-gray-100">{report.description}</p>
-            </div>
-          ) : null}
-          
-            {/* Approval Buttons - sadece onaylanmamış ve reddedilmemiş raporlar için göster */}
-            <div className="mt-6 pt-4 border-t border-gray-200 dark:border-gray-700">
-              {/* DEBUG bilgisi - hidden sınıfını kaldırırsanız bu bilgileri görebilirsiniz */}
-              <div className="mb-4 text-xs text-gray-500 hidden">
-                <p>Debug: approval_status = {report.approval_status === null ? 'null' : report.approval_status}</p>
-                <p>Debug: typeof approval_status = {typeof report.approval_status}</p>
-                <p>Debug: localApprovalStatus = {localApprovalStatus === null ? 'null' : localApprovalStatus}</p>
-              </div>
+      </div>
+      
+      {/* Property Selector - Now a dropdown */}
+      <div className="px-5 mt-[24px]">
+        <div 
+          className={`flex flex-col bg-white border border-[#D1E7D5] rounded-[16px] overflow-hidden transition-all duration-300 ${propertyDetailsOpen ? 'mb-0' : 'mb-0'}`}
+          onClick={() => setPropertyDetailsOpen(!propertyDetailsOpen)}
+        >
+          {/* Header always visible */}
+          <div className="flex flex-row items-center p-[18px] gap-2 cursor-pointer">
+            <svg width="20" height="20" viewBox="0 0 20 20" fill="none" xmlns="http://www.w3.org/2000/svg">
+              <path d="M17.8334 6.29166C17.6084 6.29166 17.3917 6.19999 17.2334 6.04166C17.0667 5.87499 16.9834 5.65833 16.9834 5.42499V3.56666L12.65 7.90833C12.3334 8.22499 11.8167 8.22499 11.5 7.90833C11.1834 7.59166 11.1834 7.07499 11.5 6.75833L15.825 2.43333H13.9667C13.4834 2.43333 13.0834 2.03333 13.0834 1.54999C13.0834 1.06666 13.4834 0.666656 13.9667 0.666656H17.8334C18.3167 0.666656 18.7167 1.06666 18.7167 1.54999V5.41666C18.7167 5.89999 18.3167 6.29999 17.8334 6.29999V6.29166Z" fill="#515964"/>
+              <path d="M7.4583 19.3333H3.5583C1.59997 19.3333 0.833301 18.5667 0.833301 16.6083V3.3917C0.833301 1.43336 1.59997 0.666693 3.5583 0.666693H7.4583C7.94163 0.666693 8.3333 1.06669 8.3333 1.55003C8.3333 2.03336 7.94163 2.43336 7.4583 2.43336H3.5583C2.59163 2.43336 2.59163 2.44169 2.59163 3.40003V16.6167C2.59163 17.5667 2.59997 17.575 3.5583 17.575H7.4583C7.94163 17.575 8.3333 17.975 8.3333 18.4583C8.3333 18.9417 7.94163 19.3417 7.4583 19.3417V19.3333Z" fill="#515964"/>
+              <path d="M11.6583 19.3333H8.33329C7.84996 19.3333 7.44995 18.9333 7.44995 18.45C7.44995 17.9667 7.84996 17.5666 8.33329 17.5666H11.6583C12.6166 17.5666 12.6166 17.5583 12.6166 16.6V3.3917C12.6166 2.44169 12.6166 2.43336 11.6583 2.43336H8.33329C7.84996 2.43336 7.44995 2.03336 7.44995 1.55003C7.44995 1.06669 7.84996 0.666693 8.33329 0.666693H11.6583C13.6166 0.666693 14.3833 1.43336 14.3833 3.3917V16.6083C14.3833 18.5667 13.6166 19.3333 11.6583 19.3333Z" fill="#515964"/>
+            </svg>
 
-              {/* Hata ayıklama (gizli) */}
-              <div className="mb-4 text-xs text-gray-500 p-2 rounded-lg hidden">
-                <p>Report UUID: {uuid}</p>
-                <p>Report ID: {report.id}</p>
-                <p>Report updated: {reportUpdated ? 'YES' : 'NO'}</p>
-                <p>UUID Storage key: report_updated_uuid_{uuid}</p>
-                <p>ID Storage key: report_updated_id_{report.id}</p>
-              </div>
-              
-              {/* Rapor henüz onaylanmamış veya reddedilmemişse butonları göster */}
-              {!report.approval_status && !localApprovalStatus ? (
-                <div className="flex flex-wrap gap-3">
-                  <button 
-                    onClick={handleApproveReport}
-                    disabled={loading}
-                    className={`flex items-center px-4 py-2 rounded-md text-sm font-medium transition-colors duration-300 ${loading ? 'bg-gray-300 cursor-wait' : 'bg-green-500 hover:bg-green-600 text-white'}`}
-                  >
-                    {loading ? (
-                      <>
-                        <svg className="animate-spin -ml-1 mr-2 h-4 w-4 text-white" xmlns="http://www.w3.org/2000/svg" fill="none" viewBox="0 0 24 24">
-                          <circle className="opacity-25" cx="12" cy="12" r="10" stroke="currentColor" strokeWidth="4"></circle>
-                          <path className="opacity-75" fill="currentColor" d="M4 12a8 8 0 018-8V0C5.373 0 0 5.373 0 12h4zm2 5.291A7.962 7.962 0 014 12H0c0 3.042 1.135 5.824 3 7.938l3-2.647z"></path>
-                        </svg>
-                        Processing...
-                      </>
-                    ) : (
-                      <>
-                        <svg xmlns="http://www.w3.org/2000/svg" className="h-5 w-5 mr-1.5" fill="none" viewBox="0 0 24 24" stroke="currentColor">
-                          <path strokeLinecap="round" strokeLinejoin="round" strokeWidth={2} d="M5 13l4 4L19 7" />
-                        </svg>
-                        Approve Report
-                      </>
-                    )}
-                  </button>
-                  
-                  <button 
-                    onClick={openRejectionModal}
-                    disabled={loading}
-                    className={`flex items-center px-4 py-2 rounded-md text-sm font-medium transition-colors duration-300 ${loading ? 'bg-gray-300 cursor-wait' : 'bg-red-500 hover:bg-red-600 text-white'}`}
-                  >
-                    {loading ? (
-                      <>
-                        <svg className="animate-spin -ml-1 mr-2 h-4 w-4 text-white" xmlns="http://www.w3.org/2000/svg" fill="none" viewBox="0 0 24 24">
-                          <circle className="opacity-25" cx="12" cy="12" r="10" stroke="currentColor" strokeWidth="4"></circle>
-                          <path className="opacity-75" fill="currentColor" d="M4 12a8 8 0 018-8V0C5.373 0 0 5.373 0 12h4zm2 5.291A7.962 7.962 0 014 12H0c0 3.042 1.135 5.824 3 7.938l3-2.647z"></path>
-                        </svg>
-                        Processing...
-                      </>
-                    ) : (
-                      <>
-                        <svg xmlns="http://www.w3.org/2000/svg" className="h-5 w-5 mr-1.5" fill="none" viewBox="0 0 24 24" stroke="currentColor">
-                          <path strokeLinecap="round" strokeLinejoin="round" strokeWidth={2} d="M6 18L18 6M6 6l12 12" />
-                        </svg>
-                        Reject Report
-                      </>
-                    )}
-                  </button>
-                </div>
-              ) : (
-                <div className="text-center py-2">
-                  <p className="text-gray-600 italic">
-                    {(report.approval_status === 'approved' || localApprovalStatus === 'approved') 
-                      ? 'This report has been approved.' 
-                      : 'This report has been rejected.'}
+            <div className="flex-grow">
+              <span className="font-bold text-[14px] leading-[19px] text-[#515964]">
+                Home & Lease Details
+              </span>
+            </div>
+            
+            <svg 
+              width="20" 
+              height="20" 
+              viewBox="0 0 20 20" 
+              fill="none" 
+              xmlns="http://www.w3.org/2000/svg"
+              className={`transition-transform duration-300 ${propertyDetailsOpen ? 'rotate-180' : ''}`}
+            >
+              <path d="M16.6 7.45834L11.1667 12.8917C10.525 13.5333 9.47503 13.5333 8.83336 12.8917L3.40002 7.45834" stroke="#515964" strokeWidth="1.5" strokeMiterlimit="10" strokeLinecap="round" strokeLinejoin="round"/>
+            </svg>
+          </div>
+          
+          {/* Dropdown content - only visible when open */}
+          <div 
+            className={`transition-all duration-300 overflow-hidden ${propertyDetailsOpen ? 'max-h-[500px] opacity-100' : 'max-h-0 opacity-0'}`}
+          >
+            <div className="px-4 pb-4 pt-1 border-t border-[#F3F4F6]">
+              <div className="grid grid-cols-1 gap-3 text-[14px]">
+                <div className="flex flex-col">
+                  <span className="text-[#515964] text-[12px]">Tenant:</span>
+                  <p className="font-medium text-[#0B1420] text-[14px]">
+                    {report.tenant_name || report.tenant?.name || report.creator_name || 'Tenant Name'}
                   </p>
                 </div>
-              )}
-          </div>
-        </div>
-        
-        {/* Photos */}
-        <div className="mt-8">
-          <div className="mb-4">
-            <h2 className="text-xl font-semibold">Photos</h2>
-          </div>
-          
-          {photoLoading ? (
-            <div className="flex justify-center items-center py-12">
-              <div className="animate-spin rounded-full h-8 w-8 border-t-2 border-b-2 border-primary"></div>
-            </div>
-          ) : photos.length === 0 ? (
-            <div className="bg-white dark:bg-gray-800 rounded-lg shadow-md p-6 text-center">
-              <p className="text-gray-600 dark:text-gray-400 mb-4">No photos have been added to this report yet.</p>
-            </div>
-          ) : (
-            <div>
-              {/* Fotoğrafları odalarına göre gruplandır */}
-              {(() => {
-                // Fotoğrafları tag'lerine göre gruplandır
-                const photosByRoom = {};
-                const untaggedPhotos = [];
                 
-                // İlk olarak fotoğrafları etiketlerine göre ayır
-                photos.forEach(photo => {
-                  // Eğer photo.tags varsa ve en az bir tag içeriyorsa
-                  if (photo.tags && photo.tags.length > 0) {
-                    // Oda etiketini bulalım (Bedroom, Bathroom, Living Room, Kitchen)
-                    const roomTag = photo.tags.find(tag => 
-                      tag.includes('Bedroom') || 
-                      tag.includes('Bathroom') || 
-                      tag.includes('Living Room') ||  
-                      tag.includes('Kitchen') ||
-                      tag.includes('Balcony') ||
-                      tag.includes('Garage') ||
-                      tag.includes('Garden') ||
-                      tag.includes('Patio') ||
-                      tag.includes('Basement') ||
-                      tag.includes('Attic') ||
-                      tag.includes('Terrace') ||
-                      tag.includes('Pool')
-                    );
-                    
-                    if (roomTag) {
-                      // Bu oda için dizi yoksa oluştur
-                      if (!photosByRoom[roomTag]) {
-                        photosByRoom[roomTag] = [];
-                      }
-                      // Fotoğrafı oda grubuna ekle
-                      photosByRoom[roomTag].push(photo);
-                    } else {
-                      // Oda etiketi yoksa etiketlenmemiş olarak ekle
-                      untaggedPhotos.push(photo);
+                <div className="flex flex-col">
+                  <span className="text-[#515964] text-[12px]">Property Address:</span>
+                  <p className="font-medium text-[#0B1420] text-[14px]">
+                    {propertyInfo?.description || propertyInfo?.address || 'Property Address'}
+                  </p>
+                </div>
+                
+                <div className="flex flex-col">
+                  <span className="text-[#515964] text-[12px]">Lease Duration:</span>
+                  <p className="font-medium text-[#0B1420] text-[14px]">
+                    {report.lease_duration ? `${report.lease_duration} ${report.lease_duration_type || 'months'}` : '12 months'}
+                  </p>
+                </div>
+                
+                <div className="flex flex-col">
+                  <span className="text-[#515964] text-[12px]">Move-out Date:</span>
+                  <p className="font-medium text-[#0B1420] text-[14px]">
+                    {report.contract_end_date 
+                      ? new Date(report.contract_end_date).toLocaleDateString('en-US', {
+                          day: 'numeric',
+                          month: 'long',
+                          year: 'numeric'
+                        })
+                      : 'Not specified'
                     }
-                  } else {
-                    // Hiç etiket yoksa etiketlenmemiş olarak ekle
-                    untaggedPhotos.push(photo);
-                  }
-                });
+                  </p>
+                </div>
                 
-                // Gruplandırılmış fotoğrafları göster
-                return (
-                  <div className="space-y-8">
-                    {/* Önce her bir oda grubunu göster */}
-                    {Object.entries(photosByRoom).map(([roomName, roomPhotos], index) => (
-                      <div key={index} className="space-y-3">
-                        <h3 className="text-lg font-medium flex items-center">
-                          <span className="w-2 h-6 bg-green-500 rounded-full mr-2"></span>
-                          {roomName} ({roomPhotos.length} photo{roomPhotos.length !== 1 ? 's' : ''})
-                        </h3>
-                        <div className="grid grid-cols-2 sm:grid-cols-3 md:grid-cols-4 lg:grid-cols-5 gap-4">
-                          {roomPhotos.map((photo) => {
-                            // Geçerli bir ID kontrolü
-                            if (!photo || !photo.id) {
-                              console.error('Invalid photo object:', photo);
-                              return null;
-                            }
-                            
-                            // Güçlendirilmiş URL oluşturma ve hata işleme
-                            let imgSrc = '/images/placeholder-image.svg';
-                            
-                            if (photo.url) {
-                              try {
-                                // 1. Doğru API URL'sini kulllan
-                                const isProduction = typeof window !== 'undefined' ? window.location.hostname !== 'localhost' : false;
-                                const baseApiUrl = isProduction ? 'https://api.depositshield.retako.com' : 'http://localhost:5050';
-                                
-                                // 2. Alternatif URL yapılarını dene
-                                if (photo.url.startsWith('http')) {
-                                  // Tam URL
-                                  imgSrc = photo.url;
-                                } else if (photo.url.startsWith('/')) {
-                                  // Göreceli yol (/uploads/...)
-                                  imgSrc = `${baseApiUrl}${photo.url}`;
-                                } else {
-                                  // Sadece dosya adı varsa
-                                  imgSrc = `${baseApiUrl}/uploads/${photo.url}`;
-                                }
-                                
-                                // URL güvenliğini kontrol et
-                                const url = new URL(imgSrc);
-                                if (!url || !url.hostname) {
-                                  console.error('Invalid URL:', imgSrc);
-                                  imgSrc = '/images/placeholder-image.svg';
-                                }
-                              } catch (urlError) {
-                                console.error('Error parsing URL:', urlError.message);
-                                imgSrc = '/images/placeholder-image.svg';
-                              }
-                            }
-                            
-                            // Bu fotoğraf için alternatif URL'ler
-                            const fallbackUrls = [
-                              imgSrc,
-                              '/images/placeholder-image.svg' // Son çare her zaman placeholder olsun
-                            ];
-                            
-                            return (
-                              <div key={photo.id} className="group bg-white dark:bg-gray-800 rounded-xl shadow-sm overflow-hidden border border-gray-100 hover:shadow-md transition-all duration-200 cursor-pointer" onClick={() => openPhotoModal(photo)}>
-                                <div className="relative">
-                                  <div className="aspect-square overflow-hidden">
-                                    {/* Yükleme göstergesi */}
-                                    <div className="absolute inset-0 flex items-center justify-center bg-gray-50 dark:bg-gray-800 z-0">
-                                      <div className="animate-pulse rounded-full h-10 w-10 border-2 border-indigo-500"></div>
-                                    </div>
-                                    
-                                    <img 
-                                      src={photo.imgSrc} 
-                                      alt={photo.note || 'Report photo'}
-                                      crossOrigin="anonymous"
-                                      onError={(e) => {
-                                      // Görüntü yükleme hatası
-                                      console.error('Image loading error:', e.target.src);
-                                      
-                                      try {
-                                        // Fallback URL'lerin sıradaki URL'sini dene
-                                        const fallbackUrls = photo.fallbackUrls || [];
-                                        const currentIndex = fallbackUrls.indexOf(e.target.src);
-                                      
-                                        if (currentIndex !== -1 && currentIndex < fallbackUrls.length - 1) {
-                                          const nextUrl = fallbackUrls[currentIndex + 1];
-                                          console.log(`Trying next URL: ${nextUrl}`);
-                                          e.target.src = nextUrl;
-                                        } else {
-                                          // Tüm URL'ler denendiyse placeholder'a dön
-                                          console.warn('All fallback URLs failed, using placeholder');
-                                          e.target.src = '/images/placeholder-image.svg';
-                                          e.target.onerror = null; // Sonsuz döngüden kaçınmak için
-                                        }
-                                      } catch (fallbackError) {
-                                        console.error('Error in fallback handling:', fallbackError);
-                                        // Her durumda en güvenli seçenek
-                                        e.target.src = '/images/placeholder-image.svg';
-                                        e.target.onerror = null;
-                                      }
-                                    }}
-                                    onLoad={(e) => {
-                                      // Yükleme başarılı olduğunda animasyonu gizle
-                                      const loadingEl = e.target.previousSibling;
-                                      if (loadingEl) loadingEl.style.display = 'none';
-                                    }}
-                                      className="w-full h-full object-cover group-hover:scale-105 transition-transform duration-300 z-10 relative"
-                                    />
-                                  </div>
-                                </div>
-                                
-                                <div className="p-2 bg-gray-50 dark:bg-gray-700 text-xs">
-                                  {photo.note ? (
-                                    <p className="text-gray-700 dark:text-gray-300 truncate font-medium" title={photo.note}>{photo.note}</p>
-                                  ) : (
-                                    <p className="text-gray-500 dark:text-gray-400 italic">No description</p>
-                                  )}
-                                  
-                                  <div className="text-xs text-gray-500 dark:text-gray-400 mt-1">
-                                    {photo.timestamp ? new Date(photo.timestamp).toLocaleString('en-US', {
-                                      year: 'numeric',
-                                      month: 'short',
-                                      day: 'numeric',
-                                      hour: '2-digit',
-                                      minute: '2-digit'
-                                    }) : 'Date not available'}
-                                  </div>
-                                  
-                                  {photo.tags && photo.tags.length > 0 && (
-                                    <div className="flex flex-wrap gap-1 mt-1 max-w-full overflow-hidden">
-                                      {photo.tags.filter(tag => tag !== roomName).map((tag, index) => (
-                                        <span key={index} className="inline-flex items-center text-xs bg-indigo-50 dark:bg-indigo-900 text-indigo-700 dark:text-indigo-200 rounded px-1.5 py-0.5 truncate max-w-[80px]" title={tag}>
-                                          {tag}
-                                        </span>
-                                      ))}
-                                    </div>
-                                  )}
-                                </div>
-                              </div>
-                            );
-                          })}
-                        </div>
-                      </div>
-                    ))}
-                    
-                    {/* Sonra etiketlenmemiş fotoğrafları göster (eğer varsa) */}
-                    {untaggedPhotos.length > 0 && (
-                      <div className="space-y-3">
-                        <h3 className="text-lg font-medium flex items-center">
-                          <span className="w-2 h-6 bg-gray-400 rounded-full mr-2"></span>
-                          Other Photos ({untaggedPhotos.length} photo{untaggedPhotos.length !== 1 ? 's' : ''})
-                        </h3>
-                        <div className="grid grid-cols-2 sm:grid-cols-3 md:grid-cols-4 lg:grid-cols-5 gap-4">
-                          {untaggedPhotos.map((photo) => {
-                            // Geçerli bir ID kontrolü
-                            if (!photo || !photo.id) {
-                              console.error('Invalid photo object:', photo);
-                              return null;
-                            }
-                            
-                            // Güçlendirilmiş URL oluşturma ve hata işleme
-                            let imgSrc = '/images/placeholder-image.svg';
-                            
-                            if (photo.url) {
-                              try {
-                                // 1. Doğru API URL'sini kulllan
-                                const isProduction = typeof window !== 'undefined' ? window.location.hostname !== 'localhost' : false;
-                                const baseApiUrl = isProduction ? 'https://api.depositshield.retako.com' : 'http://localhost:5050';
-                                
-                                // 2. Alternatif URL yapılarını dene
-                                if (photo.url.startsWith('http')) {
-                                  // Tam URL
-                                  imgSrc = photo.url;
-                                } else if (photo.url.startsWith('/')) {
-                                  // Göreceli yol (/uploads/...)
-                                  imgSrc = `${baseApiUrl}${photo.url}`;
-                                } else {
-                                  // Sadece dosya adı varsa
-                                  imgSrc = `${baseApiUrl}/uploads/${photo.url}`;
-                                }
-                                
-                                // URL güvenliğini kontrol et
-                                const url = new URL(imgSrc);
-                                if (!url || !url.hostname) {
-                                  console.error('Invalid URL:', imgSrc);
-                                  imgSrc = '/images/placeholder-image.svg';
-                                }
-                              } catch (urlError) {
-                                console.error('Error parsing URL:', urlError.message);
-                                imgSrc = '/images/placeholder-image.svg';
-                              }
-                            }
-                            
-                            // Bu fotoğraf için alternatif URL'ler
-                            const fallbackUrls = [
-                              imgSrc,
-                              '/images/placeholder-image.svg' // Son çare her zaman placeholder olsun
-                            ];
-                            
-                            return (
-                              <div key={photo.id} className="group bg-white dark:bg-gray-800 rounded-xl shadow-sm overflow-hidden border border-gray-100 hover:shadow-md transition-all duration-200 cursor-pointer" onClick={() => openPhotoModal(photo)}>
-                                <div className="relative">
-                                  <div className="aspect-square overflow-hidden">
-                                    {/* Yükleme göstergesi */}
-                                    <div className="absolute inset-0 flex items-center justify-center bg-gray-50 dark:bg-gray-800 z-0">
-                                      <div className="animate-pulse rounded-full h-10 w-10 border-2 border-indigo-500"></div>
-                                    </div>
-                                    
-                                    <img 
-                                      src={photo.imgSrc} 
-                                      alt={photo.note || 'Report photo'}
-                                      crossOrigin="anonymous"
-                                      onError={(e) => {
-                                      // Görüntü yükleme hatası
-                                      console.error('Image loading error:', e.target.src);
-                                      
-                                      try {
-                                        // Fallback URL'lerin sıradaki URL'sini dene
-                                        const fallbackUrls = photo.fallbackUrls || [];
-                                        const currentIndex = fallbackUrls.indexOf(e.target.src);
-                                      
-                                        if (currentIndex !== -1 && currentIndex < fallbackUrls.length - 1) {
-                                          const nextUrl = fallbackUrls[currentIndex + 1];
-                                          console.log(`Trying next URL: ${nextUrl}`);
-                                          e.target.src = nextUrl;
-                                        } else {
-                                          // Tüm URL'ler denendiyse placeholder'a dön
-                                          console.warn('All fallback URLs failed, using placeholder');
-                                          e.target.src = '/images/placeholder-image.svg';
-                                          e.target.onerror = null; // Sonsuz döngüden kaçınmak için
-                                        }
-                                      } catch (fallbackError) {
-                                        console.error('Error in fallback handling:', fallbackError);
-                                        // Her durumda en güvenli seçenek
-                                        e.target.src = '/images/placeholder-image.svg';
-                                        e.target.onerror = null;
-                                      }
-                                    }}
-                                    onLoad={(e) => {
-                                      // Yükleme başarılı olduğunda animasyonu gizle
-                                      const loadingEl = e.target.previousSibling;
-                                      if (loadingEl) loadingEl.style.display = 'none';
-                                    }}
-                                      className="w-full h-full object-cover group-hover:scale-105 transition-transform duration-300 z-10 relative"
-                                    />
-                                  </div>
-                                </div>
-                                
-                                <div className="p-2 bg-gray-50 dark:bg-gray-700 text-xs">
-                                  {photo.note ? (
-                                    <p className="text-gray-700 dark:text-gray-300 truncate font-medium" title={photo.note}>{photo.note}</p>
-                                  ) : (
-                                    <p className="text-gray-500 dark:text-gray-400 italic">No description</p>
-                                  )}
-                                  
-                                  <div className="text-xs text-gray-500 dark:text-gray-400 mt-1">
-                                    {photo.timestamp ? new Date(photo.timestamp).toLocaleString('en-US', {
-                                      year: 'numeric',
-                                      month: 'short',
-                                      day: 'numeric',
-                                      hour: '2-digit',
-                                      minute: '2-digit'
-                                    }) : 'Date not available'}
-                                  </div>
-                                  
-                                  {photo.tags && photo.tags.length > 0 && (
-                                    <div className="flex flex-wrap gap-1 mt-1 max-w-full overflow-hidden">
-                                      {photo.tags.map((tag, index) => (
-                                        <span key={index} className="inline-flex items-center text-xs bg-indigo-50 dark:bg-indigo-900 text-indigo-700 dark:text-indigo-200 rounded px-1.5 py-0.5 truncate max-w-[80px]" title={tag}>
-                                          {tag}
-                                        </span>
-                                      ))}
-                                    </div>
-                                  )}
-                                </div>
-                              </div>
-                            );
-                          })}
-                        </div>
-                      </div>
-                    )}
-                  </div>
-                );
-              })()}
+                <div className="flex flex-col">
+                  <span className="text-[#515964] text-[12px]">Deposit Amount:</span>
+                  <p className="font-medium text-[#0B1420] text-[14px]">
+                    {report.deposit_amount ? `$${report.deposit_amount}` : 'Not specified'}
+                  </p>
+                </div>
+              </div>
             </div>
-          )}
+          </div>
         </div>
       </div>
       
-      {/* Fotoğraf Büyütme Modalı */}
-      {photoModalOpen && selectedPhoto && (
-        <div className="fixed inset-0 z-50 flex items-center justify-center p-4 bg-black bg-opacity-75" onClick={closePhotoModal}>
-          <div className="relative max-w-4xl max-h-[90vh] overflow-hidden bg-white dark:bg-gray-800 rounded-lg shadow-xl" 
-               onClick={e => e.stopPropagation()}>
-            <button 
-              className="absolute top-2 right-2 z-10 w-8 h-8 flex items-center justify-center rounded-full bg-gray-800 bg-opacity-50 text-white hover:bg-opacity-70 transition-all"
-              onClick={closePhotoModal}
-            >
-              <svg xmlns="http://www.w3.org/2000/svg" className="h-6 w-6" fill="none" viewBox="0 0 24 24" stroke="currentColor">
-                <path strokeLinecap="round" strokeLinejoin="round" strokeWidth={2} d="M6 18L18 6M6 6l12 12" />
-              </svg>
-            </button>
+      
+      {/* Rooms Header */}
+      <h2 className="font-bold text-[20px] leading-[27px] text-[#0B1420] px-5 mt-[24px]">
+        Rooms
+      </h2>
+      
+      {/* Room Sections */}
+      <div className="mt-4 pb-20">
+        {rooms.map((room, index) => (
+          <div key={room.id} className="mb-12">
+            {/* Room Name */}
+            <h3 className="font-bold text-[16px] leading-[22px] text-[#0B1420] px-5 mb-4">
+              {room.name} {room.type && `(${room.type.charAt(0).toUpperCase() + room.type.slice(1)})`}
+            </h3>
             
-            <div className="relative w-full" style={{ maxHeight: 'calc(90vh - 120px)' }}>
-              <img 
-                src={selectedPhoto.imgSrc || selectedPhoto.url} 
-                alt={selectedPhoto.note || 'Report photo'}
-                className="w-full h-auto object-contain"
-                crossOrigin="anonymous"
-              />
-            </div>
-            
-            <div className="bg-white dark:bg-gray-800 p-4 border-t border-gray-200 dark:border-gray-700">
-              {selectedPhoto.note && (
-                <p className="text-gray-700 dark:text-gray-300 mb-2">{selectedPhoto.note}</p>
-              )}
+            {/* Tabs */}
+            <div className="flex flex-row items-start px-5 gap-4 mb-4">
+              <div 
+                className={`flex flex-col gap-1 cursor-pointer ${activeRoomTab[room.id] === 'photos' ? 'text-[#3B7145]' : 'text-[#515964]'}`}
+                onClick={() => toggleRoomTab(room.id, 'photos')}
+              >
+                <span className="font-semibold text-[16px] leading-[22px]">
+                  Photos ({room.photos ? room.photos.length : (room.photo_count || 0)})
+                </span>
+                {activeRoomTab[room.id] === 'photos' && 
+                  <div className="h-[1.5px] bg-[#3B7145]"></div>
+                }
+              </div>
               
-              {selectedPhoto.tags && selectedPhoto.tags.length > 0 && (
-                <div className="flex flex-wrap gap-1">
-                  {selectedPhoto.tags.map((tag, index) => (
-                    <span key={index} className="inline-flex items-center text-xs bg-indigo-50 dark:bg-indigo-900 text-indigo-700 dark:text-indigo-200 rounded px-2 py-1">
-                      {tag}
-                    </span>
-                  ))}
-                </div>
-              )}
-              
-              <div className="text-xs text-gray-500 dark:text-gray-400 mt-2">
-                {selectedPhoto.timestamp ? new Date(selectedPhoto.timestamp).toLocaleString('en-US', {
-                  year: 'numeric',
-                  month: 'long',
-                  day: 'numeric',
-                  hour: '2-digit',
-                  minute: '2-digit'
-                }) : 'Date not available'}
+              <div 
+                className={`flex flex-col gap-1 cursor-pointer ${activeRoomTab[room.id] === 'notes' ? 'text-[#3B7145]' : 'text-[#515964]'}`}
+                onClick={() => toggleRoomTab(room.id, 'notes')}
+              >
+                <span className="font-semibold text-[16px] leading-[22px]">
+                  Notes ({room.moveOutNotes ? room.moveOutNotes.length : (room.notes ? room.notes.length : 0)})
+                </span>
+                {activeRoomTab[room.id] === 'notes' && 
+                  <div className="h-[1.5px] bg-[#3B7145]"></div>
+                }
               </div>
             </div>
-          </div>
-        </div>
-      )}
-      
-      {/* Reddetme Nedeni Modalı */}
-      {showRejectionModal && (
-        <div className="fixed inset-0 z-50 flex items-center justify-center p-4 bg-black bg-opacity-75">
-          <div className="relative bg-white dark:bg-gray-800 rounded-lg shadow-xl w-full max-w-md overflow-hidden">
-            <div className="p-6">
-              <h3 className="text-lg font-medium text-gray-900 dark:text-white mb-4">Please provide a reason for rejection</h3>
-              
-              <div className="mb-5">
-                <textarea
-                  className="w-full px-3 py-2 text-gray-700 dark:text-gray-300 border rounded-lg focus:outline-none focus:border-indigo-500 dark:bg-gray-700 dark:border-gray-600"
-                  rows="4"
-                  placeholder="Enter your reason for rejecting this report..."
-                  value={rejectionReason}
-                  onChange={(e) => setRejectionReason(e.target.value)}
-                  required
-                ></textarea>
-                {rejectionReason.trim() === '' && (
-                  <p className="mt-1 text-sm text-red-500">A reason is required for rejection</p>
+            
+            {/* Photos Grid */}
+            {activeRoomTab[room.id] === 'photos' && (
+              <div className="px-5">
+                <div className="grid grid-cols-3 gap-4">
+                  {room.photos && room.photos.length > 0 ? (
+                    room.photos.slice(0, 6).map((photo, idx) => {
+                      // Try different URL options with fallbacks
+                      let photoUrl;
+                      if (photo.absolute_url) {
+                        photoUrl = photo.absolute_url;
+                      } else if (photo.url && photo.url.startsWith('/uploads') && report.baseUrl) {
+                        photoUrl = `${report.baseUrl}${photo.url}`;
+                      } else if (photo.file_path) {
+                        photoUrl = `${API_URL}/uploads/${photo.file_path}`;
+                      } else {
+                        photoUrl = getPhotoUrl(photo);
+                      }
+                      console.log(`Displaying photo ${idx+1} for room ${room.name}:`, photoUrl);
+                      console.log('Photo object:', photo);
+                      return (
+                        <div 
+                          key={photo.id || idx} 
+                          className="aspect-square bg-gray-200 rounded-[16px] overflow-hidden cursor-pointer"
+                          onClick={() => setSelectedPhoto({ url: photoUrl, alt: `${room.name} photo ${idx + 1}` })}
+                        >
+                          <img 
+                            src={photoUrl} 
+                            alt={`${room.name} photo ${idx + 1}`}
+                            className="w-full h-full object-cover"
+                            onError={(e) => {
+                              console.error(`Error loading image at ${photoUrl}`);
+                              e.target.src = 'https://via.placeholder.com/150?text=Photo';
+                            }}
+                          />
+                        </div>
+                      );
+                    })
+                  ) : (
+                    <div className="col-span-3 py-4 text-center text-gray-500">
+                      No photos available for this room
+                    </div>
+                  )}
+                </div>
+              </div>
+            )}
+            
+            {/* Notes */}
+            {activeRoomTab[room.id] === 'notes' && (
+              <div className="px-5">
+                {room.moveOutNotes && room.moveOutNotes.length > 0 ? (
+                  <ul className="list-disc pl-5 space-y-2">
+                    {room.moveOutNotes.map((note, noteIdx) => (
+                      <li key={noteIdx} className="font-medium text-[14px] leading-[19px] text-[#0B1420]">
+                        {note}
+                      </li>
+                    ))}
+                  </ul>
+                ) : (
+                  <p className="font-medium text-[14px] leading-[19px] text-[#6B7280]">
+                    No notes available for this room.
+                  </p>
                 )}
               </div>
-              
-              <div className="flex gap-3 justify-end">
-                <button
-                  type="button"
-                  onClick={closeRejectionModal}
-                  className="px-4 py-2 text-sm font-medium text-gray-700 bg-gray-100 rounded-md hover:bg-gray-200 focus:outline-none dark:bg-gray-700 dark:text-gray-300 dark:hover:bg-gray-600"
-                >
-                  Cancel
-                </button>
-                <button
-                  type="button"
-                  onClick={handleRejectWithReason}
-                  disabled={!rejectionReason.trim() || loading}
-                  className={`px-4 py-2 text-sm font-medium text-white rounded-md focus:outline-none ${!rejectionReason.trim() || loading ? 'bg-red-300 cursor-not-allowed' : 'bg-red-500 hover:bg-red-600'}`}
-                >
-                  {loading ? (
-                    <span className="flex items-center">
-                      <svg className="animate-spin -ml-1 mr-2 h-4 w-4 text-white" xmlns="http://www.w3.org/2000/svg" fill="none" viewBox="0 0 24 24">
-                        <circle className="opacity-25" cx="12" cy="12" r="10" stroke="currentColor" strokeWidth="4"></circle>
-                        <path className="opacity-75" fill="currentColor" d="M4 12a8 8 0 018-8V0C5.373 0 0 5.373 0 12h4zm2 5.291A7.962 7.962 0 014 12H0c0 3.042 1.135 5.824 3 7.938l3-2.647z"></path>
-                      </svg>
-                      Processing...
-                    </span>
-                  ) : 'Reject Report'}
-                </button>
-              </div>
-            </div>
+            )}
           </div>
-        </div>
-      )}
-    </PublicLayout>
+        ))}
+      </div>
+    </div>
   );
 }

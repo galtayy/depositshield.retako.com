@@ -504,73 +504,138 @@ export default function PropertySummary() {
       // Get the most recent report for this property
       const reportResponse = await apiService.reports.getByProperty(id);
       
-      if (!reportResponse.data || reportResponse.data.length === 0) {
-        // No report found, create one
+      // Check if we already have a move-in report for this property
+      const moveInReports = reportResponse.data ? reportResponse.data.filter(r => r.type === 'move-in') : [];
+      
+      if (moveInReports.length === 0) {
+        // No move-in report found, create one
+        console.log("Creating new move-in report for property:", propertyDetails.address);
+        
+        // Create report data with all rooms
         const reportData = {
           property_id: id,
-          title: `Walkthrough for ${propertyDetails.address}`,
-          description: 'Automatically generated walkthrough report',
-          type: 'move-in'
+          title: `Move-in Walkthrough for ${propertyDetails.address}`,
+          description: 'Automatically generated move-in walkthrough report',
+          type: 'move-in',
+          address: propertyDetails.address,
+          tenant_name: userData?.name || user?.name || '',
+          tenant_email: userData?.email || user?.email || '',
+          tenant_phone: userData?.phone || '',
+          landlord_name: 'Property Owner',
+          landlord_email: landlordData?.email || propertyDetails.landlord_email || '',
+          landlord_phone: landlordData?.phone || propertyDetails.landlord_phone || '',
+          rooms: rooms.map(room => ({
+            id: room.id || room.roomId,
+            name: room.name || room.roomName,
+            type: room.type || room.roomType,
+            notes: (room.roomIssueNotes || room.issueNotes || [])
+          }))
         };
         
         // Create the report
         const createResponse = await apiService.reports.create(reportData);
         const reportId = createResponse.data.id;
+        const reportUuid = createResponse.data.uuid;
+        
+        // Associate photos with the report
+        if (Object.keys(roomPhotos).length > 0) {
+          console.log("Associating photos with the report");
+          
+          for (const roomId in roomPhotos) {
+            const roomData = rooms.find(r => r.id === roomId || r.roomId === roomId);
+            
+            if (roomData && roomPhotos[roomId]) {
+              let photos = [];
+              
+              // Handle different formats of roomPhotos
+              if (Array.isArray(roomPhotos[roomId])) {
+                photos = roomPhotos[roomId];
+              } else if (roomPhotos[roomId].photos && Array.isArray(roomPhotos[roomId].photos)) {
+                photos = roomPhotos[roomId].photos;
+              }
+              
+              // Associate each photo with the report
+              for (const photo of photos) {
+                if (photo && photo.id) {
+                  try {
+                    await apiService.photos.associateWithReport(photo.id, reportId, {
+                      roomId: roomId,
+                      roomName: roomData.name || roomData.roomName
+                    });
+                  } catch (photoError) {
+                    console.error(`Error associating photo ${photo.id} with report:`, photoError);
+                  }
+                }
+              }
+            }
+          }
+        }
         
         // Send email notification to landlord
-        if (landlordData?.email) {
+        if (landlordData?.email || propertyDetails.landlord_email) {
+          const recipientEmail = landlordData?.email || propertyDetails.landlord_email;
+          console.log("Sending email notification to landlord:", recipientEmail);
+          
           const notificationData = {
-            recipientEmail: landlordData.email,
+            recipientEmail: recipientEmail,
             recipientName: 'Property Owner',
-            subject: 'New Walkthrough Report Shared',
-            message: `A new walkthrough report has been shared with you for property at ${propertyDetails.address}. You can view the report by clicking the button below.`,
-            status: 'custom'
+            subject: 'New Move-in Walkthrough Report Shared',
+            message: `A new move-in walkthrough report has been shared with you for property at ${propertyDetails.address}. You can view the report by clicking the button below.`,
+            status: 'custom',
+            reportId: reportId,
+            reportUuid: reportUuid
           };
           
           await apiService.reports.sendNotification(reportId, notificationData);
-          
-          // Store the property ID to use on the details page
-          localStorage.setItem('lastSharedPropertyId', id);
-          
-          // Navigate to success page
-          router.push('/reports/share-success');
         } else {
-          console.error('No landlord email found to send notification');
-          // Even without email, store property ID and navigate to success
-          localStorage.setItem('lastSharedPropertyId', id);
-          router.push('/reports/share-success');
+          console.log('No landlord email found to send notification');
         }
+        
+        // Store the property ID and report UUID to use on the details page
+        localStorage.setItem('lastSharedPropertyId', id);
+        if (reportUuid) {
+          localStorage.setItem('report_uuid', reportUuid);
+        }
+        
+        // Navigate to success page
+        router.push('/reports/share-success');
       } else {
-        // Use the most recent report
-        const report = reportResponse.data[0];
+        // Use the most recent move-in report
+        const report = moveInReports[0];
+        console.log("Using existing move-in report:", report.id);
         
         // Send email notification to landlord
-        if (landlordData?.email) {
+        if (landlordData?.email || propertyDetails.landlord_email) {
+          const recipientEmail = landlordData?.email || propertyDetails.landlord_email;
+          console.log("Sending email notification to landlord:", recipientEmail);
+          
           const notificationData = {
-            recipientEmail: landlordData.email,
+            recipientEmail: recipientEmail,
             recipientName: 'Property Owner',
-            subject: 'Walkthrough Report Shared',
-            message: `A walkthrough report has been shared with you for property at ${propertyDetails.address}. You can view the report by clicking the button below.`,
-            status: 'custom'
+            subject: 'Move-in Walkthrough Report Shared',
+            message: `A move-in walkthrough report has been shared with you for property at ${propertyDetails.address}. You can view the report by clicking the button below.`,
+            status: 'custom',
+            reportId: report.id,
+            reportUuid: report.uuid
           };
           
           await apiService.reports.sendNotification(report.id, notificationData);
-          
-          // Store the property ID to use on the details page
-          localStorage.setItem('lastSharedPropertyId', id);
-          
-          // Navigate to success page
-          router.push('/reports/share-success');
         } else {
-          console.error('No landlord email found to send notification');
-          // Even without email, store property ID and navigate to success
-          localStorage.setItem('lastSharedPropertyId', id);
-          router.push('/reports/share-success');
+          console.log('No landlord email found to send notification');
         }
+        
+        // Store the property ID and report UUID to use on the details page
+        localStorage.setItem('lastSharedPropertyId', id);
+        if (report.uuid) {
+          localStorage.setItem('report_uuid', report.uuid);
+        }
+        
+        // Navigate to success page
+        router.push('/reports/share-success');
       }
     } catch (error) {
       console.error('Error sharing walkthrough:', error);
-      toast.error('Failed to share walkthrough. Please try again.');
+      console.error('Failed to share walkthrough. Please try again.');
       setIsSubmitting(false);
     }
   };

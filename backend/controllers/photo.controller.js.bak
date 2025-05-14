@@ -1,0 +1,32 @@
+// Fotoğrafı özel olarak bir rapor ile ilişkilendirme
+exports.associateWithReport = async (req, res) => {
+  try {
+    const photoId = req.params.photoId;
+    const reportId = req.params.reportId;
+    
+    // Önce fotoğrafın var olduğunu kontrol et
+    const photo = await Photo.findById(photoId);
+    if (!photo) {
+      return res.status(404).json({ message: 'Photo not found' });
+    }
+    
+    // Fotoğrafı güncelle
+    const updated = await db.execute(
+      'UPDATE photos SET report_id = ? WHERE id = ?',
+      [reportId, photoId]
+    );
+    
+    if (updated[0].affectedRows === 0) {
+      return res.status(400).json({ message: 'Failed to associate photo with report' });
+    }
+    
+    res.json({ 
+      message: 'Photo successfully associated with report',
+      photoId,
+      reportId
+    });
+  } catch (error) {
+    console.error('Associate photo with report error:', error);
+    res.status(500).json({ message: 'Server error' });
+  }
+};

@@ -10,30 +10,42 @@ exports.createReport = async (req, res) => {
       return res.status(400).json({ errors: errors.array() });
     }
 
-    const { property_id, title, description, type } = req.body;
+    const { property_id, title, description, type, uuid, rooms } = req.body;
     const created_by = req.user.id;
+    
+    console.log(`[INFO] Creating report: ${title}, Property: ${property_id}, Type: ${type}, UUID: ${uuid || 'not provided'}`);
+    
+    // Odaları log'lama
+    if (rooms) {
+      console.log(`[INFO] Report includes ${rooms.length} room(s):`, rooms.map(r => r.name));
+    }
 
     // Get and check property information
     const property = await Property.findById(property_id);
     if (!property) {
+      console.log(`[ERROR] Property not found: ${property_id}`);
       return res.status(404).json({ message: 'Property not found' });
     }
 
-    // Create new report
+    // Create new report - explicitly pass UUID if provided
     const reportId = await Report.create({
       property_id,
       created_by,
       title,
       description,
-      type
+      type,
+      uuid: uuid || undefined, // Bu şekilde UUID boşsa model kendi uuid oluşturacak
+      rooms: rooms // doğrudan rooms'u geç, model içinde JSON'a çevriliyor
     });
 
     // Get report information
     const report = await Report.findById(reportId);
+    console.log(`[INFO] Report created successfully: ID=${reportId}, UUID=${report.uuid}`);
 
     res.status(201).json({
       message: 'Report created successfully',
       id: reportId,
+      uuid: report.uuid, // UUID'yi yanıtta dön
       report
     });
   } catch (error) {
@@ -91,6 +103,11 @@ exports.getReportByUuid = async (req, res) => {
     const uuid = req.params.uuid;
     console.log(`[INFO] Accessing report via UUID: ${uuid}`);
     
+    // URL oluşturma için protokol ve host bilgisi al - moved to top of function
+    const apiProtocol = req.headers['x-forwarded-proto'] || req.protocol || 'http';
+    const apiHost = req.headers['x-forwarded-host'] || req.get('host') || 'localhost:5050';
+    const baseUrl = `${apiProtocol}://${apiHost}`;
+    
     if (!uuid) {
       return res.status(400).json({ message: 'UUID parameter is required' });
     }
@@ -112,20 +129,127 @@ exports.getReportByUuid = async (req, res) => {
     // Rapordaki fotoğrafları da çek
     const Photo = require('../models/photo.model');
     try {
+      // Önemli: Rapor ID'sine bağlı tüm fotoğrafları getir
       const photos = await Photo.findByReportId(report.id);
-      // Fotoğraflar için URL'leri oluştur
-      const baseUrl = `${req.protocol}://${req.get('host')}`;
+      
+      console.log(`[PHOTOS] Fetching photos for report ${report.id}. Found ${photos.length} photos.`);
+      if (photos.length > 0) {
+        photos.forEach(p => console.log(`Photo ${p.id}: room_id=${p.room_id}, file_path=${p.file_path}`));
+      }
+      
+      // Fotoğraflar için URL'leri oluştur - using baseUrl instead of apiProtocol/apiHost
       const photosWithUrls = photos.map(photo => ({
         ...photo,
         file_path: photo.file_path, // file_path bilgisi ekle
-        url: `/uploads/${photo.file_path}`
+        url: `/uploads/${photo.file_path}`,
+        absolute_url: `${baseUrl}/uploads/${photo.file_path}`
       }));
       
-      // Fotoğrafları da ekleyerek raporu döndür
+      // Odaları JSON parse ile çöz
+      let rooms = [];
+      
+      if (report.rooms_json) {
+        try {
+          rooms = JSON.parse(report.rooms_json);
+          console.log(`[INFO] Parsed ${rooms.length} rooms from JSON data`);
+          
+          // Her oda için fotoğraf bul ve ekle
+          for (let i = 0; i < rooms.length; i++) {
+            const room = rooms[i];
+            // Sadece bu rapor için yüklenen fotoğrafları filtrele
+            const roomPhotos = photos.filter(photo => {
+              // Log debug bilgisi (raporları ayırt etmek için)
+              if (photo.room_id === room.id) {
+                console.log(`Photo ${photo.id} matches room ${room.id} and belongs to report ${photo.report_id}, current report ${report.id}`);
+              }
+              
+              // ID eşleşmesini ve rapor ID eşleşmesini kontrol et
+              return photo.room_id === room.id && String(photo.report_id) === String(report.id);
+            });
+            console.log(`[INFO] Found ${roomPhotos.length} photos for room ${room.name} (ID: ${room.id})`);
+            
+            // Notları ve fotoğrafları düzelt - using baseUrl instead of apiProtocol/apiHost
+            rooms[i].photos = roomPhotos.map(photo => ({
+              ...photo,
+              url: `/uploads/${photo.file_path}`,
+              file_path: photo.file_path,
+              absolute_url: `${baseUrl}/uploads/${photo.file_path}`
+            }));
+            
+            // Fotoğraf sayısını gerçek fotoğraf sayısıyla güncelle
+            rooms[i].photo_count = roomPhotos.length;
+            
+            console.log(`Room ${room.name} photos: found ${roomPhotos.length} photos (reported count was ${room.photo_count || 0})`);
+            console.log(`Updated room ${room.name} photo count to ${rooms[i].photo_count}`);
+            
+            // moveOutNotes alanini kontrol et ve ekle
+            if (!rooms[i].moveOutNotes && room.notes) {
+              rooms[i].moveOutNotes = room.notes;
+            }
+            
+            // Property adres bilgisini odaya ekle
+            rooms[i].address = report.address;
+            rooms[i].property_type = report.property_type || 'unknown';
+          }
+          
+        } catch (jsonError) {
+          console.error('Error parsing rooms JSON:', jsonError);
+        }
+      }
+      
+      // Property bilgilerini doğru formata getir
+      const property = {
+        id: report.property_id,
+        address: report.address,
+        property_type: report.property_type || 'unknown',
+        description: report.description || '',
+        role_at_this_property: report.role_at_this_property || ''
+      };
+
+      // Property.js'den ek kiralama detaylarını getir
+      try {
+        const Property = require('../models/property.model');
+        const propertyDetails = await Property.findById(report.property_id);
+        
+        if (propertyDetails) {
+          console.log(`[PROPERTY DETAILS] Found property details:`, propertyDetails);  
+          
+          // Kiralama detaylarını rapora ekle
+          report.lease_duration = propertyDetails.lease_duration;
+          report.lease_duration_type = propertyDetails.lease_duration_type;
+          report.deposit_amount = propertyDetails.deposit_amount;
+          report.move_out_date = propertyDetails.move_out_date;
+          report.contract_start_date = propertyDetails.contract_start_date;
+          report.contract_end_date = propertyDetails.contract_end_date;
+          report.address = propertyDetails.address;
+          report.description = propertyDetails.description;
+          
+          // Property bilgilerini de güncelle
+          property.lease_duration = propertyDetails.lease_duration;
+          property.lease_duration_type = propertyDetails.lease_duration_type;
+          property.deposit_amount = propertyDetails.deposit_amount;
+          property.move_out_date = propertyDetails.move_out_date;
+          property.contract_start_date = propertyDetails.contract_start_date;
+          property.contract_end_date = propertyDetails.contract_end_date;
+          property.address = propertyDetails.address;
+          property.description = propertyDetails.description;
+        }
+      } catch (propertyError) {
+        console.error('Error fetching property details:', propertyError);
+      }
+      
+      // Fotoğrafları ve odaları da ekleyerek raporu döndür
       console.log(`[INFO] Found ${photos.length} photos for report ${report.id}`);
+      
+      console.log(`[INFO] Base URL for photos: ${baseUrl}`);
+      console.log(`[INFO] Returning report with ${rooms.length} rooms and ${photosWithUrls.length} photos`);
+      
       return res.json({
         ...report,
-        photos: photosWithUrls
+        photos: photosWithUrls,
+        rooms: rooms,
+        property: property,
+        baseUrl: baseUrl
       });
     } catch (photoError) {
       console.error('Error fetching photos:', photoError);

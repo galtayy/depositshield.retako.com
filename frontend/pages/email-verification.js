@@ -121,6 +121,8 @@ export default function EmailVerification() {
       console.log('Verification result:', result);
       
       if (result && result.success) {
+        // Mark user as newly verified so they can be redirected to onboarding flow
+        localStorage.setItem('newlyVerified', 'true');
         // If verification is successful, redirect to success page
         router.push('/verification-success');
       } else {

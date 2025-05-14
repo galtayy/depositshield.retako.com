@@ -101,7 +101,7 @@ export function AuthProvider({ children }) {
         // Login sonrası router navigation
         if (typeof window !== 'undefined') {
           setTimeout(() => {
-            router.push('/');
+            // Do not automatically redirect here - let the verification success page handle it
           }, 100);
         }
         
@@ -155,7 +155,7 @@ export function AuthProvider({ children }) {
         // Login sonrası router navigation
         if (typeof window !== 'undefined') {
           setTimeout(() => {
-            router.push('/');
+            // Do not automatically redirect here - let the verification success page handle it
           }, 100);
         }
         

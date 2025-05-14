@@ -155,7 +155,7 @@ export default function VerificationSuccess() {
         
         {/* Start button - positioned near bottom */}
         <div className="w-full flex justify-center px-5 fixed bottom-8 z-10 pb-safe">
-          <Link href="/" className="w-full max-w-[350px]">
+          <Link href="/onboarding" className="w-full max-w-[350px]">
             <button className="w-full h-[56px] flex justify-center items-center bg-[#1C2C40] rounded-[16px] shadow-md">
               <span className="font-bold text-[16px] leading-[22px] text-[#D1E7E2]">
                 Start

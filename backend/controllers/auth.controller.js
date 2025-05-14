@@ -311,10 +311,23 @@ exports.requestPasswordReset = async (req, res) => {
     const resetExpiry = new Date();
     resetExpiry.setHours(resetExpiry.getHours() + 1);
     
+    // Format date to MySQL DATETIME format manually to preserve the local timezone
+    const year = resetExpiry.getFullYear();
+    const month = String(resetExpiry.getMonth() + 1).padStart(2, '0');
+    const day = String(resetExpiry.getDate()).padStart(2, '0');
+    const hours = String(resetExpiry.getHours()).padStart(2, '0');
+    const minutes = String(resetExpiry.getMinutes()).padStart(2, '0');
+    const seconds = String(resetExpiry.getSeconds()).padStart(2, '0');
+    
+    // Format to MySQL DATETIME format
+    const mySqlDatetime = `${year}-${month}-${day} ${hours}:${minutes}:${seconds}`;
+    
+    console.log('Setting reset expiry time:', mySqlDatetime, 'for user email:', email);
+    
     // Save reset code and expiry to user record
     await db.execute(
       'UPDATE users SET reset_code = ?, reset_expires = ? WHERE id = ?',
-      [resetCode, resetExpiry, user.id]
+      [resetCode, mySqlDatetime, user.id]
     );
     
     // Create email content for password reset
@@ -382,8 +395,29 @@ exports.verifyResetCode = async (req, res) => {
     
     // Check if reset code has expired
     const now = new Date();
-    if (now > new Date(reset_expires)) {
-      return res.status(400).json({ message: 'Reset code has expired. Please request a new one.' });
+    console.log('Current time:', now);
+    console.log('Expiry time from DB:', reset_expires);
+    
+    if (reset_expires) {
+      // Parse MySQL datetime string properly considering timezone
+      // Split the MySQL datetime string into its components
+      let parts = reset_expires.split(/[- :]/);
+      // Format: YYYY-MM-DD HH:MM:SS
+      // parts[0] = year, parts[1] = month (0-based), parts[2] = day, 
+      // parts[3] = hour, parts[4] = minute, parts[5] = second
+      
+      // Create date using local timezone (month is 0-indexed in JavaScript)
+      const expiryDate = new Date(
+        parts[0], parts[1]-1, parts[2], 
+        parts[3], parts[4], parts[5]
+      );
+      
+      console.log('Parsed expiry time (local):', expiryDate);
+      console.log('Is expired?', now > expiryDate);
+      
+      if (now > expiryDate) {
+        return res.status(400).json({ message: 'Reset code has expired. Please request a new one.' });
+      }
     }
     
     // Verify that codes match
@@ -399,9 +433,22 @@ exports.verifyResetCode = async (req, res) => {
     const tokenExpiry = new Date();
     tokenExpiry.setMinutes(tokenExpiry.getMinutes() + 15);
     
+    // Format date to MySQL DATETIME format manually to preserve the local timezone
+    const year = tokenExpiry.getFullYear();
+    const month = String(tokenExpiry.getMonth() + 1).padStart(2, '0');
+    const day = String(tokenExpiry.getDate()).padStart(2, '0');
+    const hours = String(tokenExpiry.getHours()).padStart(2, '0');
+    const minutes = String(tokenExpiry.getMinutes()).padStart(2, '0');
+    const seconds = String(tokenExpiry.getSeconds()).padStart(2, '0');
+    
+    // Format to MySQL DATETIME format
+    const mySqlDatetime = `${year}-${month}-${day} ${hours}:${minutes}:${seconds}`;
+    
+    console.log('Setting token expiry time:', mySqlDatetime, 'for user email:', email);
+    
     await db.execute(
       'UPDATE users SET reset_token = ?, reset_token_expires = ?, reset_code = NULL, reset_expires = NULL WHERE id = ?',
-      [hashedToken, tokenExpiry, user.id]
+      [hashedToken, mySqlDatetime, user.id]
     );
     
     res.json({
@@ -447,8 +494,29 @@ exports.resetPassword = async (req, res) => {
     
     // Check if token has expired
     const now = new Date();
-    if (now > new Date(reset_token_expires)) {
-      return res.status(400).json({ message: 'Reset token has expired. Please request a new password reset.' });
+    console.log('Current time:', now);
+    console.log('Token expiry time from DB:', reset_token_expires);
+    
+    if (reset_token_expires) {
+      // Parse MySQL datetime string properly considering timezone
+      // Split the MySQL datetime string into its components
+      let parts = reset_token_expires.split(/[- :]/);
+      // Format: YYYY-MM-DD HH:MM:SS
+      // parts[0] = year, parts[1] = month (0-based), parts[2] = day, 
+      // parts[3] = hour, parts[4] = minute, parts[5] = second
+      
+      // Create date using local timezone (month is 0-indexed in JavaScript)
+      const expiryDate = new Date(
+        parts[0], parts[1]-1, parts[2], 
+        parts[3], parts[4], parts[5]
+      );
+      
+      console.log('Parsed token expiry time (local):', expiryDate);
+      console.log('Is token expired?', now > expiryDate);
+      
+      if (now > expiryDate) {
+        return res.status(400).json({ message: 'Reset token has expired. Please request a new password reset.' });
+      }
     }
     
     // Verify that tokens match

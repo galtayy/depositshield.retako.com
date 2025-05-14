@@ -5,6 +5,7 @@ import Head from 'next/head';
 import { toast } from 'react-toastify';
 import { useAuth } from '../lib/auth';
 import { apiService } from '../lib/api';
+import { motion, AnimatePresence } from 'framer-motion';
 
 // Improved Menu Icon component
 const MenuIcon = () => (
@@ -27,23 +28,35 @@ export default function Home() {
   const [recentActivity, setRecentActivity] = useState([]);
   const [properties, setProperties] = useState([]);
   const [showSideMenu, setShowSideMenu] = useState(false); // Default olarak kapalı
-  const [isClosing, setIsClosing] = useState(false);
+  const [showBottomSheet, setShowBottomSheet] = useState(false);
   const sideMenuRef = useRef(null);
+  const bottomSheetRef = useRef(null);
   
   useEffect(() => {
     if (!loading && !user) {
       router.push('/welcome');
     } else if (user) {
-      // Kullanıcı giriş yapmış, menu kapalı olduğundan emin olalım
-      setShowSideMenu(false);
+      // Check if this is a newly verified user that should be redirected to onboarding
+      const isNewlyVerified = localStorage.getItem('newlyVerified') === 'true';
+      if (isNewlyVerified) {
+        // Clear the flag and redirect to onboarding
+        localStorage.removeItem('newlyVerified');
+        router.push('/onboarding');
+      } else {
+        // Regular user, just make sure menu is closed
+        setShowSideMenu(false);
+      }
     }
   }, [user, loading, router]);
   
-  // Close side menu when clicking outside
+  // Close side menu and bottom sheet when clicking outside
   useEffect(() => {
     function handleClickOutside(event) {
-      if (sideMenuRef.current && !sideMenuRef.current.contains(event.target)) {
-        closeMenu();
+      // No need to check sideMenuRef here since we handle this with the backdrop click
+      
+      // Only handle bottom sheet clicks
+      if (bottomSheetRef.current && !bottomSheetRef.current.contains(event.target) && showBottomSheet) {
+        setShowBottomSheet(false);
       }
     }
     
@@ -51,15 +64,13 @@ export default function Home() {
     return () => {
       document.removeEventListener("mousedown", handleClickOutside);
     };
-  }, [sideMenuRef]);
+  }, [bottomSheetRef, showBottomSheet]);
   
-  // Handle smooth closing animation
+  // Handle menu closing with AnimatePresence
   const closeMenu = () => {
-    setIsClosing(true);
-    setTimeout(() => {
-      setShowSideMenu(false);
-      setIsClosing(false);
-    }, 300);
+    // With AnimatePresence, we can simply set the state directly
+    // The exit animation will be handled automatically
+    setShowSideMenu(false);
   };
 
   useEffect(() => {
@@ -288,7 +299,7 @@ export default function Home() {
   }
 
   return (
-    <div className="flex flex-col items-center bg-[#FBF5DA] font-['Nunito'] min-h-screen">
+    <div className="flex flex-col items-center bg-[#FBF5DA] font-['Nunito'] min-h-screen relative overflow-hidden">
       <Head>
         <title>DepositShield - My Home</title>
         <meta name="viewport" content="width=device-width, initial-scale=1.0, maximum-scale=1.0, user-scalable=no" />
@@ -368,25 +379,35 @@ export default function Home() {
       </Head>
       
       {/* Side Menu */}
-      {showSideMenu && (
-        <>
-          <div 
-            className="side-menu-backdrop" 
-            onClick={closeMenu}
-            style={{
-              animation: isClosing ? 'fadeOut 0.3s forwards' : 'fadeIn 0.4s forwards'
-            }}
-          />
-          <div 
-            ref={sideMenuRef}
-            className={`fixed top-0 left-0 h-full w-[280px] bg-[#F5F6F8] z-40 ${isClosing ? 'animate-slideOut' : 'animate-slideIn'}`}
-            style={{
-              transform: isClosing ? 'translateX(-100%)' : 'translateX(0)',
-              transition: 'transform 0.3s cubic-bezier(0.4, 0, 0.2, 1)',
-              borderRadius: '0px',
-              position: 'fixed'
-            }}
-          >
+      <AnimatePresence>
+        {showSideMenu && (
+          <>
+            <motion.div 
+              initial={{ opacity: 0 }}
+              animate={{ opacity: 1 }}
+              exit={{ opacity: 0 }}
+              transition={{ duration: 0.3, ease: "easeInOut" }}
+              className="side-menu-backdrop" 
+              onClick={closeMenu}
+            />
+            <motion.div 
+              ref={sideMenuRef}
+              initial={{ x: "-100%" }}
+              animate={{ x: 0 }}
+              exit={{ x: "-100%" }}
+              transition={{ 
+                type: "spring", 
+                stiffness: 400, 
+                damping: 40,
+                duration: 0.5
+              }}
+              className={`fixed top-0 left-0 h-full w-[280px] bg-[#F5F6F8] z-40`}
+              style={{
+                borderRadius: '0px',
+                position: 'fixed',
+                boxShadow: '0 4px 12px rgba(0, 0, 0, 0.1)'
+              }}
+            >
             {/* Header */}
             <div className="w-full h-[65px] mt-[20px]">
               <div className="flex flex-row justify-center items-center p-[16px] w-full h-[65px] relative">
@@ -413,7 +434,7 @@ export default function Home() {
                   <div className="w-[40px] h-[40px] flex items-center justify-center rounded-[225px]">
                     <img src="/images/iconss/moveout.png" alt="Move out" className="w-[40px] h-[40px]" />
                   </div>
-                  <Link href="/" className="font-['Nunito'] font-semibold text-[16px] leading-[22px] text-[#111519]">
+                  <Link href="/move-out" className="font-['Nunito'] font-semibold text-[16px] leading-[22px] text-[#111519]">
                     Move out
                   </Link>
                 </div>
@@ -439,9 +460,12 @@ export default function Home() {
                   <div className="w-[40px] h-[40px] flex items-center justify-center rounded-[225px]">
                     <img src="/images/iconss/24support.png" alt="Support" className="w-[22px] h-[22px]" />
                   </div>
-                  <Link href="/support" className="font-['Nunito'] font-semibold text-[16px] leading-[22px] text-[#111519]">
+                  <button 
+                    onClick={() => console.log('Support functionality not yet implemented')}
+                    className="font-['Nunito'] font-semibold text-[16px] leading-[22px] text-[#111519] text-left"
+                  >
                     Support
-                  </Link>
+                  </button>
                 </div>
                 <div className="w-full h-0 border-b border-[#ECF0F5]"></div>
               </div>
@@ -464,10 +488,10 @@ export default function Home() {
                 </div>
               </div>
             </div>
-          </div>
-        </>
-      )}
-      
+            </motion.div>
+          </>
+        )}
+      </AnimatePresence>
       <div className="w-full max-w-[390px] relative">
         {/* Status Bar Space */}
         <div className="h-[40px] w-full safe-area-top"></div>
@@ -558,7 +582,7 @@ export default function Home() {
         </div>
           
         {/* Add Property Button - Moved to bottom */}
-        <div className="w-full px-4 fixed bottom-0 left-0 right-0 flex justify-center pb-6 pt-4 bg-gradient-to-t from-[#FBF5DA] to-transparent max-w-[390px] mx-auto safe-area-bottom">
+        <div className="w-full px-4 fixed bottom-0 left-0 right-0 flex flex-col items-center pb-6 pt-4 bg-gradient-to-t from-[#FBF5DA] to-transparent max-w-[390px] mx-auto safe-area-bottom">
           <button
             onClick={() => router.push('/properties/addunit')}
             className="w-full h-[56px] flex flex-row justify-center items-center py-[18px] bg-[#1C2C40] rounded-[16px] active:bg-[#283c56] transition-colors touch-manipulation"
@@ -567,7 +591,89 @@ export default function Home() {
               {properties.length > 0 ? 'Add Another Home' : 'Add New Home'}
             </span>
           </button>
+          
+          {/* Why Add Your Home? text */}
+          <button 
+            className="mt-3 text-center font-semibold text-[#0B1420] text-sm"
+            onClick={() => setShowBottomSheet(true)}
+          >
+            Why Add Your Home?
+          </button>
         </div>
+        
+        {/* Bottom Sheet */}
+        <AnimatePresence>
+          {showBottomSheet && (
+            <>
+              {/* Backdrop overlay */}
+              <motion.div 
+                initial={{ opacity: 0 }}
+                animate={{ opacity: 1 }}
+                exit={{ opacity: 0 }}
+                transition={{ duration: 0.3 }}
+                className="fixed inset-0 bg-black bg-opacity-50 z-40 h-full w-full"
+                style={{ position: 'fixed', top: 0, left: 0, right: 0, bottom: 0 }}
+                onClick={() => setShowBottomSheet(false)}
+              />
+              
+              {/* Bottom sheet */}
+              <motion.div
+                ref={bottomSheetRef}
+                initial={{ y: "100%" }}
+                animate={{ y: 0 }}
+                exit={{ y: "100%" }}
+                transition={{ type: "spring", damping: 25, stiffness: 300 }}
+                className="flex flex-col items-center p-0 pb-8 fixed w-full max-w-[390px] h-[318px] left-0 right-0 bottom-0 mx-auto bg-white rounded-t-2xl z-50"
+              >
+                {/* Drag handle */}
+                <div className="flex flex-col items-center p-2.5 w-full">
+                  <div className="w-24 h-1.5 bg-[#ECECEC] rounded-3xl" />
+                </div>
+                
+                {/* Content */}
+                <div className="flex flex-col items-center gap-4 px-8">
+                  {/* Icon - Container with background */}
+                  <div className="w-20 h-20 relative bg-[#FFF6ED] rounded-full flex items-center justify-center overflow-hidden">
+                    {/* PNG görselinizi buraya ekleyebilirsiniz */}
+                    <img 
+                      src="/images/home.png"
+                      className="w-12 h-12 object-contain"
+                      onError={(e) => {
+                        // Fallback if image doesn't load
+                        e.target.style.display = 'none';
+                        e.target.nextSibling.style.display = 'block';
+                      }}
+                    />
+                    {/* Fallback icon if image fails to load */}
+                    <div style={{display: 'none'}} className="text-[#55A363] text-4xl">
+                      🏠
+                    </div>
+                  </div>
+                  
+                  {/* Text Content */}
+                  <div className="flex flex-col items-center gap-1">
+                    <h2 className="font-bold text-lg text-center text-[#0B1420]">
+                      Why Add Your Home?
+                    </h2>
+                    <p className="font-normal text-sm text-center text-[#2E3642] mt-1">
+                      Adding your home creates a private, time-stamped record that protects your deposit like a digital receipt for move-in day.
+                    </p>
+                  </div>
+                  
+                  {/* Close Button */}
+                  <button
+                    onClick={() => setShowBottomSheet(false)}
+                    className="mt-4 w-full h-[56px] flex justify-center items-center bg-[#1C2C40] rounded-[16px]"
+                  >
+                    <span className="font-bold text-[16px] text-[#D1E7E2]">
+                      Got it
+                    </span>
+                  </button>
+                </div>
+              </motion.div>
+            </>
+          )}
+        </AnimatePresence>
       </div>
     </div>
   );

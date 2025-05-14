@@ -17,23 +17,41 @@ class Report {
   // Rapor oluşturma
   static async create(newReport) {
     try {
+      // UUID var mı kontrol et, yoksa oluştur
+      const uuid = newReport.uuid || uuidv4();
+      console.log(`[INFO] Creating report with UUID: ${uuid}`);
+      
+      // Odalar varsa rooms_json alanına kaydet
+      let roomsJson = null;
+      
+      if (newReport.rooms_json) {
+        roomsJson = newReport.rooms_json;
+        console.log(`[INFO] Using provided rooms_json data (${roomsJson.length} bytes)`);
+      } else if (newReport.rooms) {
+        roomsJson = JSON.stringify(newReport.rooms);
+        console.log(`[INFO] Converting rooms to JSON data (${roomsJson.length} bytes)`);
+      }
+      
       const query = `
         INSERT INTO reports 
-        (property_id, created_by, type, uuid, title, description) 
-        VALUES (?, ?, ?, ?, ?, ?)
+        (property_id, created_by, type, uuid, title, description, rooms_json) 
+        VALUES (?, ?, ?, ?, ?, ?, ?)
       `;
 
       const [result] = await db.execute(query, [
         newReport.property_id,
         newReport.created_by,
         newReport.type,
-        newReport.uuid || uuidv4(),
+        uuid,
         newReport.title,
-        newReport.description
+        newReport.description,
+        roomsJson
       ]);
-
+      
+      console.log(`[INFO] Report created successfully with ID: ${result.insertId}, UUID: ${uuid}`);
       return result.insertId;
     } catch (error) {
+      console.error('[ERROR] Failed to create report:', error);
       throw error;
     }
   }
