@@ -2,9 +2,98 @@
  * Fotoğraf URL işlemleri için yardımcı fonksiyonlar
  */
 
+import { apiService } from '../api';
+
 // Sabit API URL tanımlamaları
 const DEVELOPMENT_API_URL = 'http://localhost:5050';
 const PRODUCTION_API_URL = 'https://api.depositshield.retako.com';
+
+/**
+ * Bir fotoğraf URL'si oluşturur. Eğer URL zaten tam ise onu döndürür,
+ * göreceli bir URL ise API baz URL'sini ekler.
+ * @param {string} url - Düzenlenecek fotoğraf URL'si
+ * @returns {string} Tam fotoğraf URL'si
+ */
+export function getFullPhotoUrl(url) {
+  if (!url) return null;
+
+  if (url.startsWith('http')) {
+    // URL zaten tam ise olduğu gibi döndür
+    return url;
+  } else if (url.startsWith('/uploads/')) {
+    // Göreceli URL ise baz URL ekle
+    return `${apiService.getBaseUrl()}${url}`;
+  } else if (url.includes('/')) {
+    // Diğer göreceli URL'ler
+    return `${apiService.getBaseUrl()}/${url.startsWith('/') ? url.slice(1) : url}`;
+  }
+
+  // Sadece dosya adı ise /uploads/ ekle
+  return `${apiService.getBaseUrl()}/uploads/${url}`;
+}
+
+/**
+ * Bir fotoğraf nesnesinden tutarlı bir URL çıkartır
+ * @param {Object} photo - Fotoğraf verisi
+ * @returns {string} Fotoğrafın URL'si
+ */
+export function extractPhotoUrl(photo) {
+  if (!photo) return null;
+
+  // Direkt string ise URL olarak kabul et
+  if (typeof photo === 'string') {
+    return getFullPhotoUrl(photo);
+  }
+
+  // Nesne ise, önce URL, sonra src, en son file_path'e bak
+  if (photo.url) {
+    return getFullPhotoUrl(photo.url);
+  } else if (photo.src) {
+    return getFullPhotoUrl(photo.src);
+  } else if (photo.file_path) {
+    return getFullPhotoUrl(`/uploads/${photo.file_path}`);
+  }
+
+  return null;
+}
+
+/**
+ * roomPhotos veri yapısından belirli bir oda için fotoğrafları alır
+ * @param {Object} roomPhotos - Tüm oda fotoğrafları
+ * @param {Object} room - Oda verisi
+ * @param {number} index - Alınmak istenen fotoğrafın indeksi
+ * @returns {string} Fotoğraf URL'si veya null
+ */
+export function getRoomPhotoUrl(roomPhotos, room, index) {
+  if (!roomPhotos || !room) return null;
+
+  // Room ID'yi belirle (farklı formatlar olabilir)
+  const possibleIds = [
+    room.id,
+    room.roomId,
+    `${room.id}`, // string çevirimi
+    `${room.roomId}` // string çevirimi
+  ].filter(Boolean); // null/undefined değerleri filtrele
+
+  // Her olası ID için fotoğrafları ara
+  for (const id of possibleIds) {
+    if (!id || !(id in roomPhotos)) continue;
+
+    const roomPhotoData = roomPhotos[id];
+
+    // Object.photos[index] formatı
+    if (roomPhotoData.photos && Array.isArray(roomPhotoData.photos) && index < roomPhotoData.photos.length) {
+      return extractPhotoUrl(roomPhotoData.photos[index]);
+    }
+
+    // Array[index] formatı
+    if (Array.isArray(roomPhotoData) && index < roomPhotoData.length) {
+      return extractPhotoUrl(roomPhotoData[index]);
+    }
+  }
+
+  return null;
+}
 
 /**
  * Fotoğraf URL'lerini işleyen ve hata ayıklama bilgisi sağlayan yardımcı fonksiyon

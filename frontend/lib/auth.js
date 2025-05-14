@@ -8,6 +8,8 @@ const AuthContext = createContext({
   loading: true,
   login: async () => {},
   register: async () => {},
+  verifyEmail: async () => {},
+  resendVerificationCode: async () => {},
   logout: () => {},
   checkAuth: () => {},
 });
@@ -15,6 +17,7 @@ const AuthContext = createContext({
 export function AuthProvider({ children }) {
   const [user, setUser] = useState(null);
   const [loading, setLoading] = useState(true);
+  const [pendingVerification, setPendingVerification] = useState(false);
   const router = useRouter();
 
   // Auth durumunu kontrol et
@@ -43,6 +46,14 @@ export function AuthProvider({ children }) {
         
         // Token geçerliyse kullanıcı bilgilerini ayarla
         setUser(decoded.user);
+        
+        // Eğer doğrulama bekleniyorsa flag'i ayarla
+        if (decoded.user.needsVerification) {
+          setPendingVerification(true);
+        } else {
+          setPendingVerification(false);
+        }
+        
         api.defaults.headers.common['Authorization'] = `Bearer ${token}`;
         setLoading(false);
         return true;
@@ -63,13 +74,37 @@ export function AuthProvider({ children }) {
       setLoading(true);
       const response = await apiService.auth.login({ email, password });
       
+      // Doğrulama gerekiyorsa
+      if (response.data.tempToken && response.data.user.needsVerification) {
+        localStorage.setItem('tempToken', response.data.tempToken);
+        const decoded = jwtDecode(response.data.tempToken);
+        setUser(decoded.user);
+        setPendingVerification(true);
+        setLoading(false);
+        return { 
+          success: false, 
+          needsVerification: true,
+          userId: decoded.user.id,
+          message: response.data.message
+        };
+      }
+      
       if (response.data.token) {
         localStorage.setItem('token', response.data.token);
         api.defaults.headers.common['Authorization'] = `Bearer ${response.data.token}`;
         
         const decoded = jwtDecode(response.data.token);
         setUser(decoded.user);
+        setPendingVerification(false);
         setLoading(false);
+        
+        // Login sonrası router navigation
+        if (typeof window !== 'undefined') {
+          setTimeout(() => {
+            router.push('/');
+          }, 100);
+        }
+        
         return { success: true };
       }
     } catch (error) {
@@ -92,13 +127,38 @@ export function AuthProvider({ children }) {
         password 
       });
       
+      // Eğer doğrulama gerekiyorsa
+      if (response.data.tempToken && response.data.user.needsVerification) {
+        localStorage.setItem('tempToken', response.data.tempToken);
+        const decoded = jwtDecode(response.data.tempToken);
+        setUser(decoded.user);
+        setPendingVerification(true);
+        setLoading(false);
+        return { 
+          success: false, 
+          needsVerification: true,
+          userId: decoded.user.id,
+          message: response.data.message
+        };
+      }
+      
+      // Normal kayıt (doğrulama gerekmeyen durumlar için)
       if (response.data.token) {
         localStorage.setItem('token', response.data.token);
         api.defaults.headers.common['Authorization'] = `Bearer ${response.data.token}`;
         
         const decoded = jwtDecode(response.data.token);
         setUser(decoded.user);
+        setPendingVerification(false);
         setLoading(false);
+        
+        // Login sonrası router navigation
+        if (typeof window !== 'undefined') {
+          setTimeout(() => {
+            router.push('/');
+          }, 100);
+        }
+        
         return { success: true };
       }
     } catch (error) {
@@ -111,21 +171,104 @@ export function AuthProvider({ children }) {
     }
   };
 
+  // Email doğrulama işlemi
+  const verifyEmail = async (userId, code) => {
+    try {
+      setLoading(true);
+      console.log('Calling API with:', { userId, code });
+      
+      const response = await apiService.auth.verifyEmail({ userId, code });
+      console.log('Verification API response:', response.data);
+      
+      if (response.data.token) {
+        localStorage.removeItem('tempToken');
+        localStorage.setItem('token', response.data.token);
+        api.defaults.headers.common['Authorization'] = `Bearer ${response.data.token}`;
+        
+        const decoded = jwtDecode(response.data.token);
+        setUser(decoded.user);
+        setPendingVerification(false);
+        setLoading(false);
+        
+        // Doğrulama sonrası router navigation
+        if (typeof window !== 'undefined') {
+          // Verification sayfasında yönlendirmeyi verification-success sayfasına bırakıyoruz
+          // Verification-success sayfası properties'e yönlendirecek
+        }
+        
+        return { 
+          success: true,
+          message: response.data.message || 'Email verified successfully'
+        };
+      }
+      
+      // If response exists but no token was provided
+      if (response.data) {
+        return {
+          success: !!response.data.success,
+          message: response.data.message || 'Unknown response'
+        };
+      }
+      
+      return { success: false, message: 'Invalid response from server' };
+    } catch (error) {
+      console.error('Email verification error:', error);
+      setLoading(false);
+      return { 
+        success: false, 
+        message: error.response?.data?.message || 'Doğrulama yapılırken bir hata oluştu'
+      };
+    }
+  };
+
   // Çıkış işlemi
   const logout = () => {
     if (typeof window !== 'undefined') {
       localStorage.removeItem('token');
+      localStorage.removeItem('tempToken');
       delete api.defaults.headers.common['Authorization'];
     }
     setUser(null);
+    setPendingVerification(false);
     router.push('/login');
+  };
+
+  // Resend verification code
+  const resendVerificationCode = async (userId) => {
+    try {
+      setLoading(true);
+      const response = await apiService.auth.resendVerificationCode({ userId });
+      setLoading(false);
+      
+      if (response.data.success) {
+        return { 
+          success: true,
+          message: response.data.message
+        };
+      } else {
+        return {
+          success: false,
+          message: response.data.message || 'Failed to resend verification code'
+        };
+      }
+    } catch (error) {
+      console.error('Resend verification code error:', error);
+      setLoading(false);
+      return { 
+        success: false, 
+        message: error.response?.data?.message || 'Failed to resend verification code'
+      };
+    }
   };
 
   const value = {
     user,
     loading,
+    pendingVerification,
     login,
     register,
+    verifyEmail,
+    resendVerificationCode,
     logout,
     checkAuth,
   };

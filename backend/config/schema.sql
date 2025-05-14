@@ -10,6 +10,13 @@ CREATE TABLE IF NOT EXISTS users (
   name VARCHAR(255) NOT NULL,
   email VARCHAR(255) NOT NULL UNIQUE,
   password VARCHAR(255) NOT NULL,
+  verification_code VARCHAR(10) NULL,
+  verification_expires DATETIME NULL,
+  is_verified BOOLEAN DEFAULT FALSE,
+  reset_code VARCHAR(10) NULL,
+  reset_expires DATETIME NULL,
+  reset_token VARCHAR(255) NULL,
+  reset_token_expires DATETIME NULL,
   created_at TIMESTAMP DEFAULT CURRENT_TIMESTAMP,
   updated_at TIMESTAMP DEFAULT CURRENT_TIMESTAMP ON UPDATE CURRENT_TIMESTAMP
 );

@@ -1,41 +1,89 @@
 import { useState, useEffect } from 'react';
 import { useRouter } from 'next/router';
-import { toast } from 'react-toastify';
-import Layout from '../../../components/Layout';
-import { apiService } from '../../../lib/api';
+import Head from 'next/head';
 import { useAuth } from '../../../lib/auth';
+import { apiService } from '../../../lib/api';
+
+// Vuesax style icon components
+const HomeIcon = () => (
+  <svg width="22" height="22" viewBox="0 0 20 20" fill="none" xmlns="http://www.w3.org/2000/svg">
+    <path d="M9.38 2.6L2.13 8.25C1.55 8.7 1.13 9.7 1.26 10.4L2.46 17.33C2.63 18.35 3.6 19.18 4.63 19.18H15.36C16.38 19.18 17.36 18.34 17.53 17.33L18.73 10.4C18.85 9.7 18.43 8.7 17.86 8.25L10.61 2.6C10.11 2.21 9.87 2.21 9.38 2.6Z" stroke="#292D32" strokeWidth="1.5" strokeLinecap="round" strokeLinejoin="round"/>
+    <path d="M10 15.8V13.05" stroke="#292D32" strokeWidth="1.5" strokeLinecap="round" strokeLinejoin="round"/>
+  </svg>
+);
+
+const LocationIcon = () => (
+  <svg width="22" height="22" viewBox="0 0 20 20" fill="none" xmlns="http://www.w3.org/2000/svg">
+    <path d="M10 11.1917C11.436 11.1917 12.6 10.0276 12.6 8.59171C12.6 7.15578 11.436 5.99171 10 5.99171C8.56407 5.99171 7.40001 7.15578 7.40001 8.59171C7.40001 10.0276 8.56407 11.1917 10 11.1917Z" stroke="#292D32" strokeWidth="1.5"/>
+    <path d="M3.01666 7.07496C4.65833 -0.141705 15.35 -0.133372 16.9833 7.08329C17.9417 11.3166 15.3083 14.9 13 17.1166C11.325 18.7333 8.67499 18.7333 6.99166 17.1166C4.69166 14.9 2.05833 11.3083 3.01666 7.07496Z" stroke="#292D32" strokeWidth="1.5"/>
+  </svg>
+);
+
+const HouseIcon = () => (
+  <svg width="22" height="22" viewBox="0 0 20 20" fill="none" xmlns="http://www.w3.org/2000/svg">
+    <path d="M1.04167 18.9583H18.9583" stroke="#292D32" strokeWidth="1.5" strokeMiterlimit="10" strokeLinecap="round" strokeLinejoin="round"/>
+    <path d="M1.875 18.9583V5.83334C1.875 5.16667 2.2 4.53334 2.75 4.18334L8.75 0.516675C9.46667 0.0666748 10.3833 0.0666748 11.1 0.516675L17.1 4.18334C17.65 4.53334 17.975 5.16667 17.975 5.83334V18.9583" stroke="#292D32" strokeWidth="1.5" strokeMiterlimit="10" strokeLinecap="round" strokeLinejoin="round"/>
+    <path d="M10.8333 9.16666H9.16667C8.42501 9.16666 7.83334 9.75833 7.83334 10.5V18.9583H12.1667V10.5C12.1667 9.75833 11.575 9.16666 10.8333 9.16666Z" stroke="#292D32" strokeWidth="1.5" strokeMiterlimit="10" strokeLinecap="round" strokeLinejoin="round"/>
+    <path d="M7.83334 6.25H5.83334C5.375 6.25 5.00001 6.625 5.00001 7.08333V9.08333C5.00001 9.54166 5.375 9.91666 5.83334 9.91666H7.83334C8.29167 9.91666 8.66667 9.54166 8.66667 9.08333V7.08333C8.66667 6.625 8.29167 6.25 7.83334 6.25Z" stroke="#292D32" strokeWidth="1.5" strokeMiterlimit="10" strokeLinecap="round" strokeLinejoin="round"/>
+    <path d="M14.1667 6.25H12.1667C11.7083 6.25 11.3333 6.625 11.3333 7.08333V9.08333C11.3333 9.54166 11.7083 9.91666 12.1667 9.91666H14.1667C14.625 9.91666 15 9.54166 15 9.08333V7.08333C15 6.625 14.625 6.25 14.1667 6.25Z" stroke="#292D32" strokeWidth="1.5" strokeMiterlimit="10" strokeLinecap="round" strokeLinejoin="round"/>
+  </svg>
+);
+
+const CalendarIcon = () => (
+  <svg width="22" height="22" viewBox="0 0 20 20" fill="none" xmlns="http://www.w3.org/2000/svg">
+    <path d="M6.66666 1.66667V4.16667" stroke="#292D32" strokeWidth="1.5" strokeMiterlimit="10" strokeLinecap="round" strokeLinejoin="round"/>
+    <path d="M13.3333 1.66667V4.16667" stroke="#292D32" strokeWidth="1.5" strokeMiterlimit="10" strokeLinecap="round" strokeLinejoin="round"/>
+    <path d="M2.91666 7.575H17.0833" stroke="#292D32" strokeWidth="1.5" strokeMiterlimit="10" strokeLinecap="round" strokeLinejoin="round"/>
+    <path d="M17.5 7.08334V14.1667C17.5 16.6667 16.25 18.3333 13.3333 18.3333H6.66666C3.74999 18.3333 2.5 16.6667 2.5 14.1667V7.08334C2.5 4.58334 3.74999 2.91667 6.66666 2.91667H13.3333C16.25 2.91667 17.5 4.58334 17.5 7.08334Z" stroke="#292D32" strokeWidth="1.5" strokeMiterlimit="10" strokeLinecap="round" strokeLinejoin="round"/>
+    <path d="M13.0789 11.4167H13.0864" stroke="#292D32" strokeWidth="2" strokeLinecap="round" strokeLinejoin="round"/>
+    <path d="M13.0789 13.9167H13.0864" stroke="#292D32" strokeWidth="2" strokeLinecap="round" strokeLinejoin="round"/>
+    <path d="M9.99626 11.4167H10.0038" stroke="#292D32" strokeWidth="2" strokeLinecap="round" strokeLinejoin="round"/>
+    <path d="M9.99626 13.9167H10.0038" stroke="#292D32" strokeWidth="2" strokeLinecap="round" strokeLinejoin="round"/>
+    <path d="M6.91192 11.4167H6.91941" stroke="#292D32" strokeWidth="2" strokeLinecap="round" strokeLinejoin="round"/>
+    <path d="M6.91192 13.9167H6.91941" stroke="#292D32" strokeWidth="2" strokeLinecap="round" strokeLinejoin="round"/>
+  </svg>
+);
+
+const DollarCircleIcon = () => (
+  <svg width="22" height="22" viewBox="0 0 20 20" fill="none" xmlns="http://www.w3.org/2000/svg">
+    <path d="M10 18.3333C14.6024 18.3333 18.3333 14.6024 18.3333 10C18.3333 5.39763 14.6024 1.66667 10 1.66667C5.39763 1.66667 1.66667 5.39763 1.66667 10C1.66667 14.6024 5.39763 18.3333 10 18.3333Z" stroke="#292D32" strokeWidth="1.5" strokeLinecap="round" strokeLinejoin="round"/>
+    <path d="M6.25 10.8333L8.33333 12.9167L13.75 7.5" stroke="#292D32" strokeWidth="1.5" strokeLinecap="round" strokeLinejoin="round"/>
+  </svg>
+);
+
+const DocumentUploadIcon = () => (
+  <svg width="24" height="24" viewBox="0 0 24 24" fill="none" xmlns="http://www.w3.org/2000/svg">
+    <path d="M9 17V11L7 13" stroke="#292D32" strokeWidth="1.5" strokeLinecap="round" strokeLinejoin="round"/>
+    <path d="M9 11L11 13" stroke="#292D32" strokeWidth="1.5" strokeLinecap="round" strokeLinejoin="round"/>
+    <path d="M22 10V15C22 20 20 22 15 22H9C4 22 2 20 2 15V9C2 4 4 2 9 2H14" stroke="#292D32" strokeWidth="1.5" strokeLinecap="round" strokeLinejoin="round"/>
+    <path d="M22 10H18C15 10 14 9 14 6V2L22 10Z" stroke="#292D32" strokeWidth="1.5" strokeLinecap="round" strokeLinejoin="round"/>
+  </svg>
+);
+
+const ClockIcon = () => (
+  <svg width="22" height="22" viewBox="0 0 20 20" fill="none" xmlns="http://www.w3.org/2000/svg">
+    <path d="M10 18.3333C14.6024 18.3333 18.3333 14.6024 18.3333 10C18.3333 5.39763 14.6024 1.66667 10 1.66667C5.39763 1.66667 1.66667 5.39763 1.66667 10C1.66667 14.6024 5.39763 18.3333 10 18.3333Z" stroke="#292D32" strokeWidth="1.5" strokeLinecap="round" strokeLinejoin="round"/>
+    <path d="M12.8166 12.575L10.3833 11.1083C9.87499 10.8167 9.45831 10.0333 9.45831 9.44166V6.25" stroke="#292D32" strokeWidth="1.5" strokeLinecap="round" strokeLinejoin="round"/>
+  </svg>
+);
+
+const ArrowLeftIcon = () => (
+  <svg width="24" height="24" viewBox="0 0 24 24" fill="none" xmlns="http://www.w3.org/2000/svg">
+    <path d="M15 19.9201L8.47997 13.4001C7.70997 12.6301 7.70997 11.3701 8.47997 10.6001L15 4.08008" 
+      stroke="#292D32" strokeWidth="1.5" strokeMiterlimit="10" strokeLinecap="round" strokeLinejoin="round"/>
+  </svg>
+);
 
 export default function EditProperty() {
   const { user, loading: authLoading } = useAuth();
-  const [address, setAddress] = useState('');
-  const [description, setDescription] = useState('');
-  const [propertyType, setPropertyType] = useState('');
-  const [bedrooms, setBedrooms] = useState('');
-  const [bathrooms, setBathrooms] = useState('');
-  const [livingRooms, setLivingRooms] = useState('');
-  const [kitchenCount, setKitchenCount] = useState('');
-  const [squareFootage, setSquareFootage] = useState('');
-  const [yearBuilt, setYearBuilt] = useState('');
-  const [parkingSpaces, setParkingSpaces] = useState('');
-  const [depositAmount, setDepositAmount] = useState('');
-  const [contractStartDate, setContractStartDate] = useState('');
-  const [contractEndDate, setContractEndDate] = useState('');
-  const [additionalSpaces, setAdditionalSpaces] = useState({
-    balcony: false,
-    patio: false,
-    garden: false,
-    garage: false,
-    basement: false,
-    attic: false,
-    terrace: false,
-    pool: false
-  });
-  const [loading, setLoading] = useState(true);
-  const [isSubmitting, setIsSubmitting] = useState(false);
-  const [step, setStep] = useState(1);
-  const [allowSubmit, setAllowSubmit] = useState(false);
   const router = useRouter();
+  const [propertyName, setPropertyName] = useState('');
+  const [address, setAddress] = useState('');
+  const [unitNumber, setUnitNumber] = useState('');
+  const [isSubmitting, setIsSubmitting] = useState(false);
+  const [loading, setLoading] = useState(true);
   const { id } = router.query;
+  
 
   useEffect(() => {
     if (!authLoading && !user) {
@@ -48,709 +96,289 @@ export default function EditProperty() {
     }
   }, [id, user, authLoading, router]);
 
-  // Prevent automatic submission
-  useEffect(() => {
-    // Only allow form submission when save button is pressed
-    const handleBeforeUnload = (e) => {
-      if (step === 3 && !allowSubmit) {
-        e.preventDefault();
-        e.returnValue = '';
-      }
-    };
-
-    window.addEventListener('beforeunload', handleBeforeUnload);
-    return () => {
-      window.removeEventListener('beforeunload', handleBeforeUnload);
-    };
-  }, [step, allowSubmit]);
 
   const fetchProperty = async () => {
     try {
-      console.log('Fetching property details:', id);
+      setLoading(true);
       const response = await apiService.properties.getById(id);
-      console.log('Property details response:', response.data);
-      
       const property = response.data;
-      setAddress(property.address || '');
-      setDescription(property.description || '');
       
-      // Property details var mı diye kontrol et
-      if (property.property_details) {
-        const details = property.property_details;
-        setPropertyType(details.property_type || '');
-        setBedrooms(details.bedrooms || '');
-        setBathrooms(details.bathrooms || '');
-        setLivingRooms(details.living_rooms || '');
-        setKitchenCount(details.kitchen_count || '');
-        setSquareFootage(details.square_footage || '');
-        setYearBuilt(details.year_built || '');
-        setParkingSpaces(details.parking_spaces || '');
-        setDepositAmount(details.deposit_amount || '');
-        setContractStartDate(details.contract_start_date || '');
-        setContractEndDate(details.contract_end_date || '');
-        
-        // Additional spaces varsa
-        if (details.additional_spaces) {
-          try {
-            const spaces = typeof details.additional_spaces === 'string' 
-              ? JSON.parse(details.additional_spaces) 
-              : details.additional_spaces;
-            setAdditionalSpaces(spaces);
-          } catch (e) {
-            console.error('Error parsing additional spaces:', e);
-          }
-        }
+      // Log all lease details for debugging
+      console.log('PROPERTY DATA FROM API - Checking lease details:');
+      console.log('- deposit_amount:', property.deposit_amount);
+      console.log('- contract_start_date:', property.contract_start_date);
+      console.log('- contract_end_date:', property.contract_end_date);
+      console.log('- move_in_date:', property.move_in_date);
+      console.log('- lease_duration:', property.lease_duration);
+      console.log('- lease_duration_type:', property.lease_duration_type);
+      
+      // Set property data
+      setPropertyName(property.address || '');
+      setAddress(property.description || '');
+      
+      // Debug - Property Data
+      console.log('unit_number:', property.unit_number);
+      console.log('property_type:', property.property_type);
+      
+      // Set unit number from unit_number field if available, otherwise try property_type
+      setUnitNumber(property.unit_number || '');
+      
+      // Store the complete original property object in localStorage to ensure we have all fields
+      try {
+        localStorage.setItem(`complete_property_${id}`, JSON.stringify(property));
+        console.log('Stored complete property data in localStorage for safe keeping');
+      } catch (storageError) {
+        console.error('Error storing complete property data:', storageError);
       }
+      
+      setLoading(false);
     } catch (error) {
-      console.error('Property fetch error:', error);
-      let errorMessage = 'An error occurred while loading property information.';
-      
-      if (error.response) {
-        console.error('API response error:', error.response.data);
-        errorMessage = error.response.data.message || errorMessage;
-      }
-      
-      toast.error(errorMessage);
-    } finally {
+      console.error('Error fetching property:', error);
       setLoading(false);
     }
   };
 
   const handleSubmit = async (e) => {
-    console.log('Form submission requested');
     e.preventDefault();
-    
-    // If form is submitted automatically without clicking the save button
-    if (!allowSubmit) {
-      console.log('Blocking automatic submission');
+
+    if (!propertyName || !address || !unitNumber) {
       return;
     }
-    
-    if (!address || !description) {
-      toast.error('Please fill in all required fields.');
-      return;
-    }
-    
+
     setIsSubmitting(true);
-    
+
     try {
-      // Tüm gerekli alanları içeren property verilerini hazırla
+
+      // SADECE adres, açıklama ve birim no alanlarını güncelleyen özel bir obje oluştur
+      // Kira detayları (lease details) bu güncellemeden ETKİLENMEYECEK!
       const propertyData = {
-        address,
-        description,
-        role_at_this_property: 'other', // Backend için gerekli asgari değer
-        deposit_amount: depositAmount,
-        contract_start_date: contractStartDate,
-        contract_end_date: contractEndDate,
-        kitchen_count: kitchenCount,
-        additional_spaces: JSON.stringify(additionalSpaces)
+        // SADECE güncellenecek alanlar:
+        address: propertyName,
+        description: address,
+        unit_number: unitNumber,
+        
+        // Backend validasyon hatası olmasın diye
+        role_at_this_property: 'renter',
+        
+        // Özel flag - bu, backend'in sadece temel alanları güncellemesini sağlar
+        // Bu flag sayesinde kira detayları korunur ve DEĞİŞTİRİLMEZ
+        _basic_property_update: true
       };
       
-      // Property detaylarını logla
-      console.log('Property details sent to backend:', {
-        property_type: propertyType,
-        bedrooms: bedrooms || null,
-        bathrooms: bathrooms || null,
-        living_rooms: livingRooms || null,
-        kitchen_count: kitchenCount || null,
-        square_footage: squareFootage || null,
-        year_built: yearBuilt || null,
-        parking_spaces: parkingSpaces || null,
-        deposit_amount: depositAmount || null,
-        contract_start_date: contractStartDate || null,
-        contract_end_date: contractEndDate || null,
-        additional_spaces: additionalSpaces
+      // Önemli debug: Gönderilen verileri ve flag'i doğrulayalım
+      console.log('SADECE ŞU ALANLARI GÜNCELLE:', {
+        address: propertyData.address, 
+        description: propertyData.description, 
+        unit_number: propertyData.unit_number
       });
+      console.log('_basic_property_update flag değeri:', propertyData._basic_property_update);
+      console.log('Flag tipi:', typeof propertyData._basic_property_update);
+      console.log('Bu işlem kira detaylarını (deposit_amount, lease_duration vb.) DEĞİŞTİRMEYECEK!');
       
-      console.log('Sending property update request:', propertyData);
       const response = await apiService.properties.update(id, propertyData);
-      console.log('Property update response:', response.data);
-      
-      toast.success('Property updated successfully!');
-      
-      // Property detaylarını localStorage'a da kaydet
+
+      // Store basic property information in localStorage
       try {
-        const propertyDetails = {
-          property_type: propertyType || '',
-          bedrooms: bedrooms || '',
-          bathrooms: bathrooms || '',
-          living_rooms: livingRooms || '',
-          kitchen_count: kitchenCount || '',
-          square_footage: squareFootage || '',
-          year_built: yearBuilt || '',
-          parking_spaces: parkingSpaces || '',
-          deposit_amount: depositAmount || '',
-          contract_start_date: contractStartDate || '',
-          contract_end_date: contractEndDate || '',
-          additional_spaces: additionalSpaces
+        // Merge with any existing data to preserve lease details
+        const addUnitKey = `property_${id}_addunit`;
+        const existingData = localStorage.getItem(addUnitKey);
+        let storedData = {};
+        
+        if (existingData) {
+          try {
+            storedData = JSON.parse(existingData);
+          } catch (e) {
+            console.error('Error parsing existing localStorage data:', e);
+          }
+        }
+        
+        // Only update basic property information in localStorage
+        const formData = {
+          ...storedData, // Keep all existing data
+          propertyName,  // Only update these 3 specific fields
+          address,
+          unitNumber
         };
         
-        const existingDetailsStr = localStorage.getItem('propertyDetails');
-        const existingDetails = existingDetailsStr ? JSON.parse(existingDetailsStr) : {};
-        
-        existingDetails[id] = propertyDetails;
-        localStorage.setItem('propertyDetails', JSON.stringify(existingDetails));
-        console.log('Property details saved to localStorage for ID:', id);
-      } catch (error) {
-        console.error('Error saving property details to localStorage:', error);
+        localStorage.setItem(addUnitKey, JSON.stringify(formData));
+      } catch (storageError) {
+        console.error('Error saving to localStorage:', storageError);
       }
-      
-      // Başarılı güncelleme sonrası property detay sayfasına yönlendir
-      setTimeout(() => {
-        router.push(`/properties/${id}`);
-      }, 1000); // Toast mesajının görünmesi için kısa süre bekle
+
+      // Navigate back to property details
+      router.push(`/properties/details?propertyId=${id}`);
     } catch (error) {
       console.error('Property update error:', error);
-      let errorMessage = 'An error occurred while updating the property.';
-      
-      if (error.response) {
-        console.error('API response error:', error.response.data);
-        errorMessage = error.response.data.message || errorMessage;
-      }
-      
-      toast.error(errorMessage);
     } finally {
       setIsSubmitting(false);
-      setAllowSubmit(false);
     }
   };
 
-  if (loading || authLoading) {
-    return (
-      <Layout>
-        <div className="container mx-auto px-4 py-8">
-          <h1 className="text-2xl font-bold mb-6">Edit Property</h1>
-          <div className="flex justify-center items-center py-12">
-            <div className="animate-spin rounded-full h-12 w-12 border-t-2 border-b-2 border-primary"></div>
-          </div>
-        </div>
-      </Layout>
-    );
-  }
-
   return (
-    <Layout>
-      <div className="container mx-auto px-4 py-8 max-w-3xl animate-fadeIn">
-        <div className="flex items-center mb-6">
-          <button
-            onClick={() => router.back()}
-            className="mr-4 text-gray-600 hover:text-gray-900"
-            aria-label="Back"
-          >
-            <svg xmlns="http://www.w3.org/2000/svg" className="h-6 w-6" fill="none" viewBox="0 0 24 24" stroke="currentColor">
-              <path strokeLinecap="round" strokeLinejoin="round" strokeWidth={2} d="M15 19l-7-7 7-7" />
-            </svg>
-          </button>
-          <h1 className="text-2xl font-bold text-indigo-700">Edit Property</h1>
+    <div className="flex flex-col items-center bg-[#FBF5DA] font-['Nunito'] min-h-screen">
+      {/* Meta tags for better PWA experience */}
+      <Head>
+        <title>Edit Basic Home Info - DepositShield</title>
+        <meta name="viewport" content="width=device-width, initial-scale=1.0, maximum-scale=1.0, user-scalable=no" />
+        <meta name="theme-color" content="#FBF5DA" />
+        <meta name="apple-mobile-web-app-capable" content="yes" />
+        <meta name="apple-mobile-web-app-status-bar-style" content="default" />
+        <style jsx global>{`
+          body {
+            background-color: #FBF5DA;
+            margin: 0;
+            padding: 0;
+            min-height: 100vh;
+            width: 100%;
+            font-family: 'Nunito', sans-serif;
+          }
+          .safe-area-top {
+            padding-top: env(safe-area-inset-top, 40px);
+          }
+          .safe-area-bottom {
+            padding-bottom: env(safe-area-inset-bottom, 20px);
+          }
+          
+          /* Hide all elements in date input */
+          
+          /* Remove spinners for number inputs */
+          input[type="number"]::-webkit-outer-spin-button,
+          input[type="number"]::-webkit-inner-spin-button {
+            -webkit-appearance: none;
+            margin: 0;
+          }
+          input[type="number"] {
+            -moz-appearance: textfield;
+          }
+          
+          /* Custom styling for select dropdown */
+          select {
+            -webkit-appearance: none;
+            -moz-appearance: none;
+            appearance: none;
+            background-color: transparent;
+            width: 100%;
+            font-size: 14px;
+            font-weight: bold;
+            color: #515964;
+            cursor: pointer;
+            padding-right: 20px; /* Make room for custom arrow */
+          }
+          
+          /* Hide default arrow in IE */
+          select::-ms-expand {
+            display: none;
+          }
+          
+          /* Make the select element fill the entire parent container for better tap target */
+          .select-container {
+            position: relative;
+            width: 100%;
+            height: 100%;
+          }
+          
+          /* Show dropdown on tap/click */
+          select:focus {
+            outline: none;
+          }
+          
+        `}</style>
+      </Head>
+      
+      <div className="w-full max-w-[390px] relative">
+        {/* Status Bar Space */}
+        <div className="h-[40px] w-full safe-area-top"></div>
+        
+        {/* Header */}
+        <div className="w-full h-[65px]">
+          <div className="flex flex-row justify-center items-center px-[10px] py-[20px] w-full h-[65px] relative">
+            <button 
+              className="absolute left-[20px] top-[50%] transform -translate-y-1/2"
+              onClick={() => router.push(`/properties/details?propertyId=${id}`)}
+              aria-label="Go back"
+            >
+              <ArrowLeftIcon />
+            </button>
+            <h1 className="font-semibold text-[18px] leading-[25px] text-center text-[#0B1420]">
+              Edit Basic Home Info
+            </h1>
+          </div>
         </div>
         
-        <div className="bg-white rounded-xl shadow-lg overflow-hidden border border-gray-100">
-          {/* Progress indicator */}
-          <div className="bg-indigo-50 p-4">
-            <div className="w-full bg-gray-200 rounded-full h-2.5">
-              <div className="bg-indigo-600 h-2.5 rounded-full" style={{ width: step === 1 ? '33%' : step === 2 ? '66%' : '100%' }}></div>
-            </div>
-            <div className="flex justify-between mt-2 text-xs text-gray-500">
-              <span className="font-medium text-indigo-700">Step {step} of 3</span>
-              <span>{step === 1 ? 'Basic Information' : step === 2 ? 'Property Details' : 'Confirmation'}</span>
-            </div>
+        {loading ? (
+          <div className="flex justify-center items-center h-[calc(100vh-105px)]">
+            <div className="animate-spin rounded-full h-12 w-12 border-b-2 border-[#1C2C40]"></div>
           </div>
-          
-          <form onSubmit={handleSubmit}>
-            {step === 1 ? (
-              <div className="p-6 space-y-6">
-                <div className="grid md:grid-cols-2 gap-6">
-                  <div className="md:col-span-2">
-                    <label htmlFor="address" className="block text-sm font-medium text-gray-700 mb-2">
-                      Property Address* 
-                    </label>
-                    <input
-                      id="address"
-                      type="text"
-                      value={address}
-                      onChange={(e) => setAddress(e.target.value)}
-                      className="input focus:border-indigo-500 transition-all duration-300"
-                      placeholder="Enter full address"
-                      required
-                    />
-                    <p className="mt-1 text-xs text-gray-500">Include street number, name, city, state and zip code</p>
-                  </div>
-                  
-                  <div className="md:col-span-2">
-                    <label htmlFor="description" className="block text-sm font-medium text-gray-700 mb-2">
-                      Property Description*
-                    </label>
-                    <textarea
-                      id="description"
-                      value={description}
-                      onChange={(e) => setDescription(e.target.value)}
-                      rows={4}
-                      className="input focus:border-indigo-500 transition-all duration-300"
-                      placeholder="Enter general information about the property"
-                      required
-                    />
-                    <p className="mt-1 text-xs text-gray-500">Provide a general description of the property</p>
-                  </div>
-
-                  <div className="md:col-span-2">
-                    <label htmlFor="propertyType" className="block text-sm font-medium text-gray-700 mb-2">
-                      Property Type*
-                    </label>
-                    <select
-                      id="propertyType"
-                      value={propertyType}
-                      onChange={(e) => setPropertyType(e.target.value)}
-                      className="input focus:border-indigo-500 transition-all duration-300"
-                    >
-                      <option value="">Select a property type</option>
-                      <option value="apartment">Apartment</option>
-                      <option value="house">House</option>
-                      <option value="villa">Villa</option>
-                      <option value="townhouse">Townhouse</option>
-                      <option value="condo">Condominium</option>
-                      <option value="studio">Studio</option>
-                      <option value="duplex">Duplex</option>
-                      <option value="commercial">Commercial Property</option>
-                      <option value="other">Other</option>
-                    </select>
-                    <p className="mt-1 text-xs text-gray-500">Select the type that best describes your property</p>
-                  </div>
-                </div>
-                
-                <div className="pt-4 flex justify-between items-center border-t border-gray-100 mt-6">
-                  <button
-                    type="button"
-                    onClick={() => router.back()}
-                    className="btn btn-secondary hover:bg-gray-100 transition-all duration-300"
-                  >
-                    Cancel
-                  </button>
-                  
-                  <button
-                    type="button"
-                    onClick={() => {
-                      if (address && description) {
-                        setStep(2);
-                      } else {
-                        toast.error('Please fill in all required fields.');
-                      }
-                    }}
-                    className="btn btn-primary hover:bg-indigo-500 transition-all duration-300"
-                  >
-                    Continue
-                  </button>
-                </div>
+        ) : (
+          <form onSubmit={handleSubmit} className="w-full px-5">
+            {/* Home details section */}
+            <div className="w-full mt-4 mb-6">
+              <h2 className="font-bold text-[16px] leading-[22px] text-[#0B1420]">
+                Edit basic home details 🏡
+              </h2>
+            </div>
+            
+            {/* Property Name Input */}
+            <div className="box-border flex flex-row items-center p-[18px_20px] gap-[8px] w-full h-[56px] bg-white border border-[#D1E7D5] rounded-[16px] mb-4">
+              <div className="flex-shrink-0 min-w-[20px]">
+                <HomeIcon />
               </div>
-            ) : step === 2 ? (
-              <div className="p-6 space-y-6">
-                <div className="grid md:grid-cols-2 gap-6">
-                  <div className="col-span-1">
-                    <label htmlFor="bedrooms" className="block text-sm font-medium text-gray-700 mb-2">
-                      Bedrooms
-                    </label>
-                    <select
-                      id="bedrooms"
-                      value={bedrooms}
-                      onChange={(e) => setBedrooms(e.target.value)}
-                      className="input focus:border-indigo-500 transition-all duration-300"
-                    >
-                      <option value="">Select</option>
-                      <option value="0">Studio (0)</option>
-                      <option value="1">1</option>
-                      <option value="2">2</option>
-                      <option value="3">3</option>
-                      <option value="4">4</option>
-                      <option value="5">5</option>
-                      <option value="6+">6+</option>
-                    </select>
-                  </div>
-                  
-                  <div className="col-span-1">
-                    <label htmlFor="bathrooms" className="block text-sm font-medium text-gray-700 mb-2">
-                      Bathrooms
-                    </label>
-                    <select
-                      id="bathrooms"
-                      value={bathrooms}
-                      onChange={(e) => setBathrooms(e.target.value)}
-                      className="input focus:border-indigo-500 transition-all duration-300"
-                    >
-                      <option value="">Select</option>
-                      <option value="1">1</option>
-                      <option value="1.5">1.5</option>
-                      <option value="2">2</option>
-                      <option value="2.5">2.5</option>
-                      <option value="3">3</option>
-                      <option value="3.5">3.5</option>
-                      <option value="4+">4+</option>
-                    </select>
-                  </div>
-                  
-                  <div className="col-span-1">
-                    <label htmlFor="livingRooms" className="block text-sm font-medium text-gray-700 mb-2">
-                      Living Rooms
-                    </label>
-                    <select
-                      id="livingRooms"
-                      value={livingRooms}
-                      onChange={(e) => setLivingRooms(e.target.value)}
-                      className="input focus:border-indigo-500 transition-all duration-300"
-                    >
-                      <option value="">Select</option>
-                      <option value="0">0</option>
-                      <option value="1">1</option>
-                      <option value="2">2</option>
-                      <option value="3">3</option>
-                      <option value="4+">4+</option>
-                    </select>
-                  </div>
-                  
-                  <div className="col-span-1">
-                    <label htmlFor="kitchenCount" className="block text-sm font-medium text-gray-700 mb-2">
-                      Kitchen
-                    </label>
-                    <select
-                      id="kitchenCount"
-                      value={kitchenCount}
-                      onChange={(e) => setKitchenCount(e.target.value)}
-                      className="input focus:border-indigo-500 transition-all duration-300"
-                    >
-                      <option value="">Select</option>
-                      <option value="0">0</option>
-                      <option value="1">1</option>
-                      <option value="2">2</option>
-                      <option value="3">3</option>
-                      <option value="4+">4+</option>
-                    </select>
-                  </div>
-                  
-                  <div className="col-span-1">
-                    <label htmlFor="squareFootage" className="block text-sm font-medium text-gray-700 mb-2">
-                      Square Footage
-                    </label>
-                    <input
-                      id="squareFootage"
-                      type="number"
-                      value={squareFootage}
-                      onChange={(e) => setSquareFootage(e.target.value)}
-                      className="input focus:border-indigo-500 transition-all duration-300"
-                      placeholder="e.g. 1200"
-                    />
-                    <p className="mt-1 text-xs text-gray-500">In square feet</p>
-                  </div>
-
-                  <div className="col-span-1">
-                    <label htmlFor="yearBuilt" className="block text-sm font-medium text-gray-700 mb-2">
-                      Year Built
-                    </label>
-                    <input
-                      id="yearBuilt"
-                      type="number"
-                      value={yearBuilt}
-                      onChange={(e) => setYearBuilt(e.target.value)}
-                      className="input focus:border-indigo-500 transition-all duration-300"
-                      placeholder="e.g. 2005"
-                    />
-                  </div>
-                  
-                  <div className="col-span-1">
-                    <label htmlFor="parkingSpaces" className="block text-sm font-medium text-gray-700 mb-2">
-                      Parking Spaces
-                    </label>
-                    <select
-                      id="parkingSpaces"
-                      value={parkingSpaces}
-                      onChange={(e) => setParkingSpaces(e.target.value)}
-                      className="input focus:border-indigo-500 transition-all duration-300"
-                    >
-                      <option value="">Select</option>
-                      <option value="0">0</option>
-                      <option value="1">1</option>
-                      <option value="2">2</option>
-                      <option value="3">3</option>
-                      <option value="4+">4+</option>
-                    </select>
-                  </div>
-                  
-                  <div className="col-span-1">
-                    <label htmlFor="depositAmount" className="block text-sm font-medium text-gray-700 mb-2">
-                      Deposit Amount
-                    </label>
-                    <div className="relative">
-                      <div className="absolute inset-y-0 left-0 pl-3 flex items-center pointer-events-none">
-                        <span className="text-gray-500 text-sm ml-1">$</span>
-                      </div>
-                      <input
-                        id="depositAmount"
-                        type="number"
-                        value={depositAmount}
-                        onChange={(e) => setDepositAmount(e.target.value)}
-                        className="input pl-12 focus:border-indigo-500 transition-all duration-300"
-                        placeholder="0.00"
-                      />
-                    </div>
-                  </div>
-
-                  <div className="col-span-1">
-                    <label htmlFor="contractStartDate" className="block text-sm font-medium text-gray-700 mb-2">
-                      Contract Start Date
-                    </label>
-                    <input
-                      id="contractStartDate"
-                      type="date"
-                      value={contractStartDate}
-                      onChange={(e) => setContractStartDate(e.target.value)}
-                      className="input focus:border-indigo-500 transition-all duration-300"
-                    />
-                  </div>
-                  
-                  <div className="col-span-1">
-                    <label htmlFor="contractEndDate" className="block text-sm font-medium text-gray-700 mb-2">
-                      Contract End Date
-                    </label>
-                    <input
-                      id="contractEndDate"
-                      type="date"
-                      value={contractEndDate}
-                      onChange={(e) => setContractEndDate(e.target.value)}
-                      className="input focus:border-indigo-500 transition-all duration-300"
-                    />
-                  </div>
-                </div>
-                
-                <div className="mt-6">
-                  <label className="block text-sm font-medium text-gray-700 mb-3">
-                    Additional Spaces
-                  </label>
-                  <div className="grid grid-cols-2 md:grid-cols-4 gap-3">
-                    <div className="flex items-center">
-                      <input
-                        id="balcony"
-                        type="checkbox"
-                        checked={additionalSpaces.balcony}
-                        onChange={(e) => setAdditionalSpaces({...additionalSpaces, balcony: e.target.checked})}
-                        className="h-4 w-4 text-indigo-600 focus:ring-indigo-500 border-gray-300 rounded"
-                      />
-                      <label htmlFor="balcony" className="ml-2 text-sm text-gray-700">Balcony</label>
-                    </div>
-                    <div className="flex items-center">
-                      <input
-                        id="patio"
-                        type="checkbox"
-                        checked={additionalSpaces.patio}
-                        onChange={(e) => setAdditionalSpaces({...additionalSpaces, patio: e.target.checked})}
-                        className="h-4 w-4 text-indigo-600 focus:ring-indigo-500 border-gray-300 rounded"
-                      />
-                      <label htmlFor="patio" className="ml-2 text-sm text-gray-700">Patio</label>
-                    </div>
-                    <div className="flex items-center">
-                      <input
-                        id="garden"
-                        type="checkbox"
-                        checked={additionalSpaces.garden}
-                        onChange={(e) => setAdditionalSpaces({...additionalSpaces, garden: e.target.checked})}
-                        className="h-4 w-4 text-indigo-600 focus:ring-indigo-500 border-gray-300 rounded"
-                      />
-                      <label htmlFor="garden" className="ml-2 text-sm text-gray-700">Garden</label>
-                    </div>
-                    <div className="flex items-center">
-                      <input
-                        id="garage"
-                        type="checkbox"
-                        checked={additionalSpaces.garage}
-                        onChange={(e) => setAdditionalSpaces({...additionalSpaces, garage: e.target.checked})}
-                        className="h-4 w-4 text-indigo-600 focus:ring-indigo-500 border-gray-300 rounded"
-                      />
-                      <label htmlFor="garage" className="ml-2 text-sm text-gray-700">Garage</label>
-                    </div>
-                    <div className="flex items-center">
-                      <input
-                        id="basement"
-                        type="checkbox"
-                        checked={additionalSpaces.basement}
-                        onChange={(e) => setAdditionalSpaces({...additionalSpaces, basement: e.target.checked})}
-                        className="h-4 w-4 text-indigo-600 focus:ring-indigo-500 border-gray-300 rounded"
-                      />
-                      <label htmlFor="basement" className="ml-2 text-sm text-gray-700">Basement</label>
-                    </div>
-                    <div className="flex items-center">
-                      <input
-                        id="attic"
-                        type="checkbox"
-                        checked={additionalSpaces.attic}
-                        onChange={(e) => setAdditionalSpaces({...additionalSpaces, attic: e.target.checked})}
-                        className="h-4 w-4 text-indigo-600 focus:ring-indigo-500 border-gray-300 rounded"
-                      />
-                      <label htmlFor="attic" className="ml-2 text-sm text-gray-700">Attic</label>
-                    </div>
-                    <div className="flex items-center">
-                      <input
-                        id="terrace"
-                        type="checkbox"
-                        checked={additionalSpaces.terrace}
-                        onChange={(e) => setAdditionalSpaces({...additionalSpaces, terrace: e.target.checked})}
-                        className="h-4 w-4 text-indigo-600 focus:ring-indigo-500 border-gray-300 rounded"
-                      />
-                      <label htmlFor="terrace" className="ml-2 text-sm text-gray-700">Terrace</label>
-                    </div>
-                    <div className="flex items-center">
-                      <input
-                        id="pool"
-                        type="checkbox"
-                        checked={additionalSpaces.pool}
-                        onChange={(e) => setAdditionalSpaces({...additionalSpaces, pool: e.target.checked})}
-                        className="h-4 w-4 text-indigo-600 focus:ring-indigo-500 border-gray-300 rounded"
-                      />
-                      <label htmlFor="pool" className="ml-2 text-sm text-gray-700">Pool</label>
-                    </div>
-                  </div>
-                </div>
-                
-                <div className="pt-4 flex justify-between items-center border-t border-gray-100 mt-6">
-                  <button
-                    type="button"
-                    onClick={() => setStep(1)}
-                    className="btn btn-secondary hover:bg-gray-100 transition-all duration-300"
-                  >
-                    Back
-                  </button>
-                  
-                  <button
-                    type="button"
-                    onClick={() => setStep(3)}
-                    className="btn btn-primary hover:bg-indigo-500 transition-all duration-300"
-                  >
-                    Continue
-                  </button>
-                </div>
+              <input
+                type="text"
+                value={propertyName}
+                onChange={(e) => setPropertyName(e.target.value)}
+                placeholder="What should we call this place?"
+                className="flex-1 h-[19px] font-bold text-[14px] leading-[19px] text-[#515964] bg-transparent border-none outline-none"
+                required
+              />
+            </div>
+            
+            {/* Address Input */}
+            <div className="box-border flex flex-row items-center p-[18px_20px] gap-[8px] w-full h-[56px] bg-white border border-[#D1E7D5] rounded-[16px] mb-4">
+              <div className="flex-shrink-0 min-w-[20px]">
+                <LocationIcon />
               </div>
-            ) : (
-              <div className="p-6 space-y-6">
-                <div className="bg-green-50 border border-green-100 rounded-lg p-4 flex items-start">
-                  <svg xmlns="http://www.w3.org/2000/svg" className="h-5 w-5 text-green-500 mt-0.5 mr-2" viewBox="0 0 20 20" fill="currentColor">
-                    <path fillRule="evenodd" d="M10 18a8 8 0 100-16 8 8 0 000 16zm3.707-9.293a1 1 0 00-1.414-1.414L9 10.586 7.707 9.293a1 1 0 00-1.414 1.414l2 2a1 1 0 001.414 0l4-4z" clipRule="evenodd" />
-                  </svg>
-                  <div>
-                    <h3 className="font-medium text-green-800 text-sm">Ready to Save</h3>
-                    <p className="text-green-700 text-xs mt-1">Please review your property details before saving</p>
-                  </div>
-                </div>
-              
-                <div className="grid md:grid-cols-2 gap-6">
-                  <div className="bg-gray-50 rounded-lg p-4">
-                    <h3 className="font-medium text-gray-700 mb-3">Basic Information</h3>
-                    
-                    <div className="space-y-2">
-                      <div>
-                        <span className="text-xs text-gray-500">Address:</span>
-                        <p className="text-sm">{address}</p>
-                      </div>
-                      
-                      <div>
-                        <span className="text-xs text-gray-500">Description:</span>
-                        <p className="text-sm">{description}</p>
-                      </div>
-                      
-                      <div>
-                        <span className="text-xs text-gray-500">Property Type:</span>
-                        <p className="text-sm capitalize">{propertyType || 'Not specified'}</p>
-                      </div>
-                    </div>
-                  </div>
-                  
-                  <div className="bg-gray-50 rounded-lg p-4">
-                    <h3 className="font-medium text-gray-700 mb-3">Property Details</h3>
-                    
-                    <div className="grid grid-cols-2 gap-2">
-                      <div>
-                        <span className="text-xs text-gray-500">Bedrooms:</span>
-                        <p className="text-sm">{bedrooms || 'Not specified'}</p>
-                      </div>
-                      
-                      <div>
-                        <span className="text-xs text-gray-500">Bathrooms:</span>
-                        <p className="text-sm">{bathrooms || 'Not specified'}</p>
-                      </div>
-                      
-                      <div>
-                        <span className="text-xs text-gray-500">Living Rooms:</span>
-                        <p className="text-sm">{livingRooms || 'Not specified'}</p>
-                      </div>
-                      
-                      <div>
-                        <span className="text-xs text-gray-500">Kitchen:</span>
-                        <p className="text-sm">{kitchenCount || 'Not specified'}</p>
-                      </div>
-                      
-                      <div>
-                        <span className="text-xs text-gray-500">Square Footage:</span>
-                        <p className="text-sm">{squareFootage ? `${squareFootage} sq ft` : 'Not specified'}</p>
-                      </div>
-                      
-                      <div>
-                        <span className="text-xs text-gray-500">Year Built:</span>
-                        <p className="text-sm">{yearBuilt || 'Not specified'}</p>
-                      </div>
-                      
-                      <div>
-                        <span className="text-xs text-gray-500">Parking Spaces:</span>
-                        <p className="text-sm">{parkingSpaces || 'Not specified'}</p>
-                      </div>
-                      
-                      <div>
-                        <span className="text-xs text-gray-500">Deposit Amount:</span>
-                        <p className="text-sm">{depositAmount ? `$${depositAmount}` : 'Not specified'}</p>
-                      </div>
-                      
-                      <div>
-                        <span className="text-xs text-gray-500">Contract Dates:</span>
-                        <p className="text-sm">{contractStartDate && contractEndDate ? `${contractStartDate} to ${contractEndDate}` : 'Not specified'}</p>
-                      </div>
-                    </div>
-                    
-                    <div className="mt-3">
-                      <span className="text-xs text-gray-500">Additional Spaces:</span>
-                      <div className="grid grid-cols-2 gap-1 mt-1">
-                        {Object.entries(additionalSpaces).filter(([_, value]) => value).map(([key]) => (
-                          <p key={key} className="text-sm capitalize">{key}</p>
-                        ))}
-                        {Object.values(additionalSpaces).every(v => !v) && <p className="text-sm">None selected</p>}
-                      </div>
-                    </div>
-                  </div>
-                </div>
-              
-                <div className="pt-4 flex justify-between items-center border-t border-gray-100 mt-6">
-                  <button
-                    type="button"
-                    onClick={() => setStep(2)}
-                    className="btn btn-secondary hover:bg-gray-100 transition-all duration-300"
-                  >
-                    Back
-                  </button>
-                  
-                  <button
-                    type="submit"
-                    className="btn btn-primary hover:bg-indigo-500 transition-all duration-300"
-                    disabled={isSubmitting}
-                    onClick={() => setAllowSubmit(true)}
-                  >
-                    {isSubmitting ? (
-                      <span className="flex items-center">
-                        <svg className="animate-spin -ml-1 mr-2 h-4 w-4 text-white" xmlns="http://www.w3.org/2000/svg" fill="none" viewBox="0 0 24 24">
-                          <circle className="opacity-25" cx="12" cy="12" r="10" stroke="currentColor" strokeWidth="4"></circle>
-                          <path className="opacity-75" fill="currentColor" d="M4 12a8 8 0 018-8V0C5.373 0 0 5.373 0 12h4zm2 5.291A7.962 7.962 0 014 12H0c0 3.042 1.135 5.824 3 7.938l3-2.647z"></path>
-                        </svg>
-                        Saving...
-                      </span>
-                    ) : 'Save Changes'}
-                  </button>
-                </div>
+              <input
+                type="text"
+                value={address}
+                onChange={(e) => setAddress(e.target.value)}
+                placeholder="Where is this located?"
+                className="flex-1 h-[19px] font-bold text-[14px] leading-[19px] text-[#515964] bg-transparent border-none outline-none"
+                required
+              />
+            </div>
+            
+            {/* Unit Number Input */}
+            <div className="box-border flex flex-row items-center p-[18px_20px] gap-[8px] w-full h-[56px] bg-white border border-[#D1E7D5] rounded-[16px] mb-20">
+              <div className="flex-shrink-0 min-w-[20px]">
+                <HouseIcon />
               </div>
-            )}
+              <input
+                type="text"
+                value={unitNumber}
+                onChange={(e) => setUnitNumber(e.target.value)}
+                placeholder="Unit number"
+                className="flex-1 h-[19px] font-bold text-[14px] leading-[19px] text-[#515964] bg-transparent border-none outline-none"
+                required
+              />
+            </div>
+            
+            {/* Save Button */}
+            <div className="fixed left-0 right-0 bottom-0 px-5 py-4 bg-[#FBF5DA] safe-area-bottom">
+              <button
+                type="submit"
+                disabled={isSubmitting}
+                className="w-full h-[56px] flex justify-center items-center bg-[#1C2C40] rounded-[16px]"
+              >
+                <span className="font-bold text-[16px] leading-[22px] text-[#D1E7E2]">
+                  {isSubmitting ? 'Saving...' : 'Save Changes'}
+                </span>
+              </button>
+            </div>
           </form>
-        </div>
+        )}
       </div>
-    </Layout>
+      
+    </div>
   );
 }

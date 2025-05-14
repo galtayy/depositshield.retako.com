@@ -1,0 +1,46 @@
+# Oda Yükleme Sorunu İçin Çözüm
+
+Bu dosya, mülk sayfasında odaların görüntülenmemesi sorununu çözmek için oluşturulmuştur.
+
+## Yapılan Değişiklikler
+
+1. Backend tarafında JSON veri işleme sorununun giderilmesi:
+   - `property.model.js` - `getRooms` ve `saveRooms` fonksiyonları güncellendi
+   - Veri tipi kontrolleri eklendi ve hata yakalanması geliştirildi
+
+2. Frontend tarafında oda verileri işleme sorunun giderilmesi:
+   - İki yeni test sayfası oluşturuldu:
+     - `test-render-rooms.js` - Sadece fotoğraflardan oda yükleme test sayfası
+     - `simplified-index.js` - Basitleştirilmiş mülk detay sayfası
+
+## Geçici Çözüm
+
+Mülk sayfasında odaların düzgün görüntülenmesi için şunlardan birini yapabilirsiniz:
+
+### Seçenek 1: Geçici URL kullanımı
+
+Mülk ID'si için basitleştirilmiş sayfayı kullanın:
+```
+http://localhost:3000/properties/[mülk-id]/simplified-index
+```
+
+Örneğin: 
+```
+http://localhost:3000/properties/38/simplified-index
+```
+
+### Seçenek 2: Dosya değişikliği
+
+1. Şu adımları takip edin:
+   - `frontend/pages/properties/[id]/index.js` dosyasını yedekleyin
+   - `frontend/pages/properties/[id]/simplified-index.js` içeriğini `index.js` içine kopyalayın
+
+## Kalıcı Çözüm
+
+Yukarıdaki geçici çözümü test ettikten sonra, kalıcı çözüm için:
+
+1. property.model.js ve photo.controller.js içindeki değişiklikleri inceleyip aynılarını uygulayabilirsiniz
+2. Fotoğrafları gruplandırma işlemindeki sorunlar giderildi
+3. photosByRoom veri yapısının işlenmesi düzeltildi
+
+Bu değişiklikler sayesinde mülk sayfasında odaların düzgün şekilde görüntülenmesi sağlanacaktır.

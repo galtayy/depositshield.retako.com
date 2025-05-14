@@ -11,7 +11,10 @@ const pool = mysql.createPool({
   database: process.env.DB_NAME,
   waitForConnections: true,
   connectionLimit: 10,
-  queueLimit: 0
+  queueLimit: 0,
+  // Add timezone option to handle dates correctly
+  timezone: '+00:00', // Set to UTC
+  dateStrings: true // Force MySQL to return dates as strings in YYYY-MM-DD format
 });
 
 // Promise wrapper

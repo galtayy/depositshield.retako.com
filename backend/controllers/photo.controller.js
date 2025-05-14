@@ -194,6 +194,8 @@ exports.uploadPhoto = [
       // Fotoğraf bilgilerini veritabanına kaydet
       const photoId = await Photo.create({
         report_id: reportId,
+        room_id: req.body.room_id || null,
+        property_id: req.body.property_id || null,
         file_path: req.file.filename,
         note: req.body.note || null,
         timestamp: new Date(),
@@ -461,6 +463,181 @@ exports.removePhotoTag = async (req, res) => {
   } catch (error) {
     console.error('Remove photo tag error:', error);
     res.status(500).json({ message: 'Sunucu hatası' });
+  }
+};
+
+// Oda fotoğrafları yükleme controller
+exports.uploadRoomPhoto = [
+  // Upload middleware
+  upload.single('photo'),
+
+  // Controller
+  async (req, res) => {
+    try {
+      const propertyId = parseInt(req.params.propertyId, 10);
+      const roomId = req.params.roomId;
+
+      // Mülk var mı kontrol et
+      const property = await Property.findById(propertyId);
+      if (!property) {
+        // Yüklenen dosyayı sil
+        if (req.file) {
+          fs.unlinkSync(req.file.path);
+        }
+        return res.status(404).json({ message: 'Property not found' });
+      }
+
+      // Mülk sahibi mi kontrol et
+      const isOwner = property.user_id === req.user.id;
+      if (!isOwner) {
+        // Yüklenen dosyayı sil
+        if (req.file) {
+          fs.unlinkSync(req.file.path);
+        }
+        return res.status(403).json({ message: 'You do not have permission to upload photos to this property' });
+      }
+
+      // Dosya yüklendi mi kontrol et
+      if (!req.file) {
+        return res.status(400).json({ message: 'Photo upload failed' });
+      }
+
+      // Etiketleri JSON parse et
+      let tags = [];
+      if (req.body.tags) {
+        try {
+          tags = JSON.parse(req.body.tags);
+        } catch (err) {
+          console.error('Tags parsing error:', err);
+        }
+      }
+
+      // Fotoğraf bilgilerini veritabanına kaydet
+      const photoId = await Photo.create({
+        report_id: null, // odalar için report_id null
+        room_id: roomId,
+        property_id: propertyId,
+        file_path: req.file.filename,
+        note: req.body.note || null,
+        timestamp: new Date(),
+        tags
+      });
+
+      // Fotoğraf bilgilerini getir
+      const photo = await Photo.findById(photoId);
+
+      // Göreceli URL oluştur
+      photo.url = `/uploads/${photo.file_path}`;
+
+      res.status(201).json({
+        message: 'Photo uploaded successfully',
+        photo
+      });
+    } catch (error) {
+      console.error('Upload room photo error:', error);
+
+      // Yüklenen dosyayı sil
+      if (req.file) {
+        fs.unlinkSync(req.file.path);
+      }
+
+      res.status(500).json({ message: 'Server error' });
+    }
+  }
+];
+
+// Odaya ait fotoğrafları getirme
+exports.getRoomPhotos = async (req, res) => {
+  try {
+    const propertyId = parseInt(req.params.propertyId, 10);
+    const roomId = req.params.roomId;
+
+    // Mülk var mı kontrol et
+    const property = await Property.findById(propertyId);
+    if (!property) {
+      return res.status(404).json({ message: 'Property not found' });
+    }
+
+    // Mülk sahibi mi kontrol et
+    const isOwner = property.user_id === req.user.id;
+    if (!isOwner) {
+      return res.status(403).json({ message: 'You do not have permission to access this property' });
+    }
+
+    // Odaya ait fotoğrafları getir
+    const photos = await Photo.findByRoomId(roomId, propertyId);
+
+    // Göreceli URL'leri ekle
+    const photosWithUrls = photos.map(photo => ({
+      ...photo,
+      url: `/uploads/${photo.file_path}`
+    }));
+
+    res.json(photosWithUrls);
+  } catch (error) {
+    console.error('Get room photos error:', error);
+    res.status(500).json({ message: 'Server error' });
+  }
+};
+
+// Mülke ait tüm fotoğrafları getirme
+exports.getPropertyPhotos = async (req, res) => {
+  try {
+    const propertyId = parseInt(req.params.propertyId, 10);
+
+    // Mülk var mı kontrol et
+    const property = await Property.findById(propertyId);
+    if (!property) {
+      return res.status(404).json({ message: 'Property not found' });
+    }
+
+    // Mülk sahibi mi kontrol et
+    const isOwner = property.user_id === req.user.id;
+    if (!isOwner) {
+      return res.status(403).json({ message: 'You do not have permission to access this property' });
+    }
+
+    // Mülke ait tüm fotoğrafları getir
+    const photos = await Photo.findByPropertyId(propertyId);
+
+    // Göreceli URL'leri ekle
+    const photosWithUrls = photos.map(photo => ({
+      ...photo,
+      url: `/uploads/${photo.file_path}`
+    }));
+
+    // Fotoğrafları oda bazında gruplandır
+    const photosByRoom = {};
+
+    photosWithUrls.forEach(photo => {
+      if (!photo.room_id) {
+        return; // Skip photos without room_id
+      }
+
+      const roomId = photo.room_id;
+
+      // Initialize room if it doesn't exist
+      if (!photosByRoom[roomId]) {
+        photosByRoom[roomId] = {
+          photos: []
+        };
+      }
+
+      // Add photo to room
+      photosByRoom[roomId].photos.push(photo);
+    });
+
+    console.log(`Found ${photos.length} photos for property ${propertyId}`);
+    console.log(`Organized into ${Object.keys(photosByRoom).length} rooms`);
+
+    // Return both formats for maximum compatibility
+    res.json({
+      photos: photosWithUrls,
+      photosByRoom: photosByRoom
+    });
+  } catch (error) {
+    console.error('Get property photos error:', error);
+    res.status(500).json({ message: 'Server error' });
   }
 };
 

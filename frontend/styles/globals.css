@@ -1,18 +1,44 @@
-@import url('https://fonts.googleapis.com/css2?family=Inter:wght@300;400;500;600;700&display=swap');
+@import url('https://fonts.googleapis.com/css2?family=Nunito:wght@300;400;500;600;700&display=swap');
 
 @tailwind base;
 @tailwind components;
 @tailwind utilities;
 
 /* Base Styles */
-html, 
+html,
 body {
-  font-family: 'Inter', sans-serif;
+  font-family: 'Nunito', sans-serif;
   scroll-behavior: smooth;
+  -webkit-tap-highlight-color: rgba(0,0,0,0);
+  -webkit-touch-callout: none;
+  overscroll-behavior-y: contain;
+  user-select: none;
+}
+
+/* Specific selectable areas */
+input, textarea, [contenteditable="true"] {
+  user-select: text;
+}
+
+/* iOS Momentum Scrolling */
+.momentum-scroll {
+  -webkit-overflow-scrolling: touch;
 }
 
 body {
-  @apply text-gray-800 bg-gray-50 dark:text-gray-100 dark:bg-gray-900;
+  @apply text-gray-800 bg-[#FBF5DA] dark:text-gray-100 dark:bg-gray-900;
+}
+
+/* PWA Display Mode Detection */
+@media all and (display-mode: standalone) {
+  body {
+    @apply pb-safe;
+  }
+}
+
+/* Disable long-press context menu on iOS */
+button, a {
+  -webkit-touch-callout: none;
 }
 
 /* Typography */

@@ -13,12 +13,21 @@ router.get('/public-report/:reportId', photoController.getPublicReportPhotos);
 // Tüm diğer fotoğraf route'ları için auth middleware
 router.use(authMiddleware);
 
-// Fotoğraf yükleme endpoint'i
+// Fotoğraf yükleme endpoint'i - rapor için
 router.post('/upload/:reportId', photoController.uploadPhoto);
+
+// Fotoğraf yükleme endpoint'i - oda için
+router.post('/upload-room/:propertyId/:roomId', photoController.uploadRoomPhoto);
 
 // Rapora ait tüm fotoğrafları getirme endpoint'i
 // NOT: Bu endpoint kimlik doğrulama gerektirir
 router.get('/report/:reportId', photoController.getPhotosByReport);
+
+// Odaya ait tüm fotoğrafları getirme endpoint'i
+router.get('/room/:propertyId/:roomId', photoController.getRoomPhotos);
+
+// Mülke ait tüm fotoğrafları getirme endpoint'i
+router.get('/property/:propertyId', photoController.getPropertyPhotos);
 
 // Fotoğraf detaylarını getirme endpoint'i
 router.get('/:id', photoController.getPhotoById);

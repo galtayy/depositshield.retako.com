@@ -1,9 +1,21 @@
-import { useEffect, useState } from 'react';
+import { useEffect, useState, useRef } from 'react';
 import { useRouter } from 'next/router';
 import Link from 'next/link';
+import Head from 'next/head';
+import { toast } from 'react-toastify';
 import { useAuth } from '../lib/auth';
-import Layout from '../components/Layout';
 import { apiService } from '../lib/api';
+
+// Improved Menu Icon component
+const MenuIcon = () => (
+  <svg width="22" height="22" viewBox="0 0 22 22" fill="none" xmlns="http://www.w3.org/2000/svg">
+    <rect x="2" y="5" width="18" height="2" rx="1" fill="#1C2C40"/>
+    <rect x="2" y="10" width="18" height="2" rx="1" fill="#1C2C40"/>
+    <rect x="2" y="15" width="18" height="2" rx="1" fill="#1C2C40"/>
+  </svg>
+);
+
+// PNG ikonları kullanıyoruz, SVG bileşenleri artık gerekli değil
 
 export default function Home() {
   const { user, loading } = useAuth();
@@ -13,12 +25,42 @@ export default function Home() {
     reports: 0
   });
   const [recentActivity, setRecentActivity] = useState([]);
+  const [properties, setProperties] = useState([]);
+  const [showSideMenu, setShowSideMenu] = useState(false); // Default olarak kapalı
+  const [isClosing, setIsClosing] = useState(false);
+  const sideMenuRef = useRef(null);
   
   useEffect(() => {
     if (!loading && !user) {
-      router.push('/login');
+      router.push('/welcome');
+    } else if (user) {
+      // Kullanıcı giriş yapmış, menu kapalı olduğundan emin olalım
+      setShowSideMenu(false);
     }
   }, [user, loading, router]);
+  
+  // Close side menu when clicking outside
+  useEffect(() => {
+    function handleClickOutside(event) {
+      if (sideMenuRef.current && !sideMenuRef.current.contains(event.target)) {
+        closeMenu();
+      }
+    }
+    
+    document.addEventListener("mousedown", handleClickOutside);
+    return () => {
+      document.removeEventListener("mousedown", handleClickOutside);
+    };
+  }, [sideMenuRef]);
+  
+  // Handle smooth closing animation
+  const closeMenu = () => {
+    setIsClosing(true);
+    setTimeout(() => {
+      setShowSideMenu(false);
+      setIsClosing(false);
+    }, 300);
+  };
 
   useEffect(() => {
     if (user) {
@@ -26,6 +68,68 @@ export default function Home() {
       fetchDashboardData();
     }
   }, [user]);
+  
+  // İlk giriş yaptığında, eğer hiç mülk yoksa direkt olarak addunit sayfasına yönlendir
+  useEffect(() => {
+    // İlk render'da değil, veri yüklendiğinde ve properties'in 0 olduğu durumda
+    if (!loading && properties.length === 0 && stats.properties === 0 && user) {
+      // Ancak doğrudan gelinen sayfa properties ise (direkt URL'den giriş yapıldıysa)
+      const isDirectNavigation = typeof window !== 'undefined' && 
+        window.performance?.navigation?.type === window.performance?.navigation?.TYPE_NAVIGATE;
+      
+      // Otomatik yönlendirme yapmayı burada devre dışı bırakıyoruz, çünkü kullanıcı
+      // zaten doğrudan properties/addunit'e gitmiş olacak
+      
+      // Debugger amaçlı yönlendirme görünümü
+      console.log("Properties length:", properties.length);
+      console.log("Stats properties:", stats.properties);
+    }
+  }, [loading, properties, stats.properties, user, router]);
+
+  // Mülk silme fonksiyonu
+  const deleteProperty = async (e, propertyId) => {
+    // Event yayılmasını engelle
+    e.stopPropagation();
+
+    // Silme işlemini onaylama
+    if (confirm('Bu mülkü silmek istediğinizden emin misiniz? Bu işlem geri alınamaz.')) {
+      try {
+        // API üzerinden silme işlemi
+        const token = localStorage.getItem('token');
+
+        if (!token) {
+          toast.error('Oturum doğrulanmadı');
+          return;
+        }
+
+        const isProduction = typeof window !== 'undefined' ? window.location.hostname !== 'localhost' : false;
+        const apiUrl = isProduction ? 'https://api.depositshield.retako.com' : 'http://localhost:5050';
+
+        try {
+          // API'ye silme isteği gönder
+          const axios = (await import('axios')).default;
+          await axios.delete(`${apiUrl}/api/properties/${propertyId}`, {
+            headers: { Authorization: `Bearer ${token}` }
+          });
+
+          // Başarılı silme durumunda state'i güncelle
+          setProperties(properties.filter(prop => prop.id !== propertyId));
+          setStats(prev => ({ ...prev, properties: prev.properties - 1 }));
+
+          toast.success('Mülk başarıyla silindi');
+        } catch (apiError) {
+          console.error('API silme hatası:', apiError);
+
+          // API hatası durumunda yine de UI'dan kaldır
+          setProperties(properties.filter(prop => prop.id !== propertyId));
+          toast.success('Mülk yerel olarak silindi');
+        }
+      } catch (error) {
+        console.error('Mülk silme hatası:', error);
+        toast.error('Mülk silinirken bir hata oluştu');
+      }
+    }
+  };
 
   const fetchDashboardData = async () => {
     try {
@@ -49,15 +153,18 @@ export default function Home() {
       console.log('Using API URL:', apiUrl);
       
       // Properties verisini çek
-      let properties = [];
+      let propertiesList = [];
       try {
         console.log('Fetching properties from', `${apiUrl}/api/properties`);
         const propertiesResponse = await axios.get(`${apiUrl}/api/properties`, { headers });
-        properties = propertiesResponse.data || [];
-        console.log(`Loaded ${properties.length} properties`);
+        propertiesList = propertiesResponse.data || [];
+        console.log(`Loaded ${propertiesList.length} properties`);
+        
+        // Mülkleri state'e kaydet
+        setProperties(propertiesList);
       } catch (propError) {
         console.error('Failed to load properties:', propError);
-        properties = [];
+        propertiesList = [];
       }
       
       // Reports verisini çek
@@ -74,7 +181,7 @@ export default function Home() {
       
       // İstatistikleri güncelle
       setStats({
-        properties: properties.length,
+        properties: propertiesList.length,
         reports: reports.length
       });
       
@@ -101,13 +208,13 @@ export default function Home() {
         }
         
         // Property activity
-        if (properties && properties.length > 0) {
+        if (propertiesList && propertiesList.length > 0) {
           // Add most recent property
           activities.push({
-            id: `property-${properties[0].id || 2}`,
+            id: `property-${propertiesList[0].id || 2}`,
             type: 'add_property',
             title: 'Added new property',
-            description: properties[0].address || 'Property Address',
+            description: propertiesList[0].address || 'Property Address',
             time: '3 days ago',
             icon: 'property'
           });
@@ -170,234 +277,298 @@ export default function Home() {
 
   if (loading) {
     return (
-      <div className="flex justify-center items-center min-h-screen bg-background dark:bg-gray-900">
-        <div className="animate-spin rounded-full h-12 w-12 border-t-2 border-b-2 border-primary dark:border-primary-light"></div>
+      <div className="flex justify-center items-center h-screen bg-[#FBF5DA]">
+        <div className="animate-spin rounded-full h-12 w-12 border-b-2 border-[#1C2C40]"></div>
       </div>
     );
   }
 
   if (!user) {
-    return null; // Will redirect to login page
+    return null; // Will redirect to welcome page
   }
 
   return (
-    <Layout>
-      <div className="container mx-auto px-4 py-8">
-        {/* Hero Banner - Daha modern tasarım */}
-        <div className="bg-gradient-to-r from-blue-500 via-indigo-500 to-purple-600 rounded-2xl p-8 mb-10 shadow-lg overflow-hidden relative">
-          <div className="absolute right-0 top-0 w-64 h-64 rounded-full bg-white/10 -mr-20 -mt-20 blur-3xl"></div>
-          <div className="absolute left-10 bottom-0 w-32 h-32 rounded-full bg-white/10 -mb-10 blur-2xl"></div>
-          
-          <div className="relative z-10 max-w-3xl">
-            <h1 className="text-3xl md:text-5xl font-bold mb-4 text-white tracking-tight">Welcome back, {user.name}</h1>
-            <p className="text-blue-100 text-lg mb-8 leading-relaxed">Manage your properties and document their condition with detailed reports and high-quality photos.</p>
-            
-            <div className="flex flex-wrap gap-4">
-              <Link href="/properties/new" className="btn bg-white text-blue-600 hover:bg-blue-50 rounded-xl shadow-md font-medium py-3 px-6 flex items-center transition-all">
-                <svg className="w-5 h-5 mr-2" fill="none" stroke="currentColor" viewBox="0 0 24 24" xmlns="http://www.w3.org/2000/svg">
-                  <path strokeLinecap="round" strokeLinejoin="round" strokeWidth={2} d="M12 6v6m0 0v6m0-6h6m-6 0H6" />
-                </svg>
-                Add New Property
-              </Link>
-              
-              <Link href="/reports/new" className="btn bg-indigo-700 bg-opacity-50 text-white hover:bg-opacity-70 rounded-xl shadow-md font-medium py-3 px-6 flex items-center border border-white/20 backdrop-blur-sm transition-all">
-                <svg className="w-5 h-5 mr-2" fill="none" stroke="currentColor" viewBox="0 0 24 24" xmlns="http://www.w3.org/2000/svg">
-                  <path strokeLinecap="round" strokeLinejoin="round" strokeWidth={2} d="M9 13h6m-3-3v6m5 5H7a2 2 0 01-2-2V5a2 2 0 012-2h5.586a1 1 0 01.707.293l5.414 5.414a1 1 0 01.293.707V19a2 2 0 01-2 2z" />
-                </svg>
-                Create New Report
-              </Link>
+    <div className="flex flex-col items-center bg-[#FBF5DA] font-['Nunito'] min-h-screen">
+      <Head>
+        <title>DepositShield - My Home</title>
+        <meta name="viewport" content="width=device-width, initial-scale=1.0, maximum-scale=1.0, user-scalable=no" />
+        <meta name="theme-color" content="#FBF5DA" />
+        <meta name="apple-mobile-web-app-capable" content="yes" />
+        <meta name="apple-mobile-web-app-status-bar-style" content="default" />
+        <style jsx global>{`
+          body {
+            background-color: #FBF5DA;
+            margin: 0;
+            padding: 0;
+            min-height: 100vh;
+            width: 100%;
+            font-family: 'Nunito', sans-serif;
+          }
+          .safe-area-top {
+            padding-top: env(safe-area-inset-top, 40px);
+          }
+          .safe-area-bottom {
+            padding-bottom: env(safe-area-inset-bottom, 20px);
+          }
+          @keyframes slideIn {
+            from {
+              transform: translateX(-100%);
+              opacity: 0;
+            }
+            to {
+              transform: translateX(0);
+              opacity: 1;
+            }
+          }
+          .animate-slideIn {
+            animation: slideIn 0.4s cubic-bezier(0.16, 1, 0.3, 1) forwards;
+          }
+          .side-menu-backdrop {
+            background-color: rgba(0, 0, 0, 0.4);
+            position: fixed;
+            top: 0;
+            left: 0;
+            width: 100%;
+            height: 100%;
+            z-index: 30;
+            transition: opacity 0.4s;
+            opacity: 0;
+            animation: fadeIn 0.4s forwards;
+          }
+          @keyframes fadeIn {
+            from {
+              opacity: 0;
+            }
+            to {
+              opacity: 1;
+            }
+          }
+          @keyframes fadeOut {
+            from {
+              opacity: 1;
+            }
+            to {
+              opacity: 0;
+            }
+          }
+          @keyframes slideOut {
+            from {
+              transform: translateX(0);
+              opacity: 1;
+            }
+            to {
+              transform: translateX(-100%);
+              opacity: 0;
+            }
+          }
+          .animate-slideOut {
+            animation: slideOut 0.3s cubic-bezier(0.4, 0, 0.2, 1) forwards;
+          }
+        `}</style>
+      </Head>
+      
+      {/* Side Menu */}
+      {showSideMenu && (
+        <>
+          <div 
+            className="side-menu-backdrop" 
+            onClick={closeMenu}
+            style={{
+              animation: isClosing ? 'fadeOut 0.3s forwards' : 'fadeIn 0.4s forwards'
+            }}
+          />
+          <div 
+            ref={sideMenuRef}
+            className={`fixed top-0 left-0 h-full w-[280px] bg-[#F5F6F8] z-40 ${isClosing ? 'animate-slideOut' : 'animate-slideIn'}`}
+            style={{
+              transform: isClosing ? 'translateX(-100%)' : 'translateX(0)',
+              transition: 'transform 0.3s cubic-bezier(0.4, 0, 0.2, 1)',
+              borderRadius: '0px',
+              position: 'fixed'
+            }}
+          >
+            {/* Header */}
+            <div className="w-full h-[65px] mt-[20px]">
+              <div className="flex flex-row justify-center items-center p-[16px] w-full h-[65px] relative">
+                <button 
+                  className="absolute w-[32px] h-[32px] left-[16px] top-[50%] transform -translate-y-1/2 p-1 bg-gray-100 rounded-full flex items-center justify-center"
+                  onClick={closeMenu}
+                  aria-label="Go back"
+                >
+                  <svg width="24" height="24" viewBox="0 0 24 24" fill="none" xmlns="http://www.w3.org/2000/svg">
+                    <path d="M15 19L8 12L15 5" stroke="#2E3642" strokeWidth="1.5" strokeLinecap="round" strokeLinejoin="round"/>
+                  </svg>
+                </button>
+                <h1 className="font-semibold text-[18px] leading-[25px] text-center text-[#0B1420]">
+                  Menu
+                </h1>
+              </div>
             </div>
+            
+            {/* Navigation Menu - Frame 873 */}
+            <div className="w-full flex flex-col items-center p-[16px] mt-[10px]">
+              {/* Move Out Option */}
+              <div className="w-full h-[64px] mb-0 relative">
+                <div className="flex flex-row items-center p-[12px_0px] gap-[16px] w-full h-[64px]">
+                  <div className="w-[40px] h-[40px] flex items-center justify-center rounded-[225px]">
+                    <img src="/images/iconss/moveout.png" alt="Move out" className="w-[40px] h-[40px]" />
+                  </div>
+                  <Link href="/" className="font-['Nunito'] font-semibold text-[16px] leading-[22px] text-[#111519]">
+                    Move out
+                  </Link>
+                </div>
+                <div className="w-full h-0 border-b border-[#ECF0F5]"></div>
+              </div>
+              
+              {/* Password Change Option */}
+              <div className="w-full h-[64px] mb-0 relative">
+                <div className="flex flex-row items-center p-[12px_0px] gap-[16px] w-full h-[64px]">
+                  <div className="w-[40px] h-[40px] flex items-center justify-center rounded-[225px]">
+                    <img src="/images/iconss/passwordchange.png" alt="Password Change" className="w-[40px] h-[40px]" />
+                  </div>
+                  <Link href="/profile/change-password" className="font-['Nunito'] font-semibold text-[16px] leading-[22px] text-[#111519]">
+                    Password Change
+                  </Link>
+                </div>
+                <div className="w-full h-0 border-b border-[#ECF0F5]"></div>
+              </div>
+              
+              {/* Support Option */}
+              <div className="w-full h-[64px] mb-0 relative">
+                <div className="flex flex-row items-center p-[12px_0px] gap-[16px] w-full h-[64px]">
+                  <div className="w-[40px] h-[40px] flex items-center justify-center rounded-[225px]">
+                    <img src="/images/iconss/24support.png" alt="Support" className="w-[22px] h-[22px]" />
+                  </div>
+                  <Link href="/support" className="font-['Nunito'] font-semibold text-[16px] leading-[22px] text-[#111519]">
+                    Support
+                  </Link>
+                </div>
+                <div className="w-full h-0 border-b border-[#ECF0F5]"></div>
+              </div>
+              
+              {/* Logout Option */}
+              <div className="w-full h-[64px] mb-0 relative">
+                <div className="flex flex-row items-center p-[12px_0px] gap-[16px] w-full h-[64px]">
+                  <div className="w-[40px] h-[40px] flex items-center justify-center rounded-[225px]">
+                    <img src="/images/iconss/logout.png" alt="Logout" className="w-[22px] h-[22px]" />
+                  </div>
+                  <button 
+                    onClick={() => {
+                      localStorage.removeItem('token');
+                      router.push('/login');
+                    }}
+                    className="font-['Nunito'] font-semibold text-[16px] leading-[22px] text-[#111519] text-left"
+                  >
+                    Log out
+                  </button>
+                </div>
+              </div>
+            </div>
+          </div>
+        </>
+      )}
+      
+      <div className="w-full max-w-[390px] relative">
+        {/* Status Bar Space */}
+        <div className="h-[40px] w-full safe-area-top"></div>
+        
+        {/* Header */}
+        <div className="w-full h-[65px]">
+          <div className="flex flex-row justify-center items-center px-[10px] py-[20px] w-full h-[65px] relative">
+            <button 
+              className="absolute left-[20px] top-[50%] transform -translate-y-1/2 z-10"
+              onClick={() => setShowSideMenu(true)}
+              aria-label="Open menu"
+            >
+              <MenuIcon />
+            </button>
+            <h1 className="font-semibold text-[18px] leading-[25px] text-center text-[#0B1420]">
+              My Home
+            </h1>
           </div>
         </div>
-        
-        {/* Stats Cards - Modern Tasarım */}
-        <div className="grid grid-cols-1 md:grid-cols-2 gap-8">
-          {/* Properties Card */}
-          <div className="bg-white dark:bg-gray-800 rounded-2xl shadow-lg p-6 transition-all duration-300 hover:shadow-xl border border-gray-100 dark:border-gray-700 relative overflow-hidden">
-            <div className="absolute top-0 right-0 w-24 h-24 bg-indigo-100 dark:bg-indigo-900/30 rounded-full -mt-8 -mr-8 opacity-70"></div>
-            
-            <div className="relative z-10">
-              <div className="flex items-center mb-4">
-                <div className="bg-indigo-100 text-indigo-600 dark:bg-indigo-900 dark:text-indigo-300 rounded-xl p-3 mr-4">
-                  <svg className="w-7 h-7" fill="none" stroke="currentColor" viewBox="0 0 24 24" xmlns="http://www.w3.org/2000/svg">
-                    <path strokeLinecap="round" strokeLinejoin="round" strokeWidth={2} d="M19 21V5a2 2 0 00-2-2H7a2 2 0 00-2 2v16m14 0h2m-2 0h-5m-9 0H3m2 0h5M9 7h1m-1 4h1m4-4h1m-1 4h1m-5 10v-5a1 1 0 011-1h2a1 1 0 011 1v5m-4 0h4" />
-                  </svg>
-                </div>
-                <div>
-                  <h2 className="text-xl font-bold text-gray-900 dark:text-white">Properties</h2>
-                  <p className="text-gray-500 dark:text-gray-400 text-sm">Manage your real estate</p>
-                </div>
+      
+        {/* Main Content */}
+        <div className="w-full px-4">
+          {properties.length === 0 ? (
+            // Empty state when no properties exist
+            <div className="w-full flex flex-col justify-end items-center gap-[20px] mb-8">
+              <div className="w-[248.82px] h-[135.29px] mt-[10px]">
+                <img
+                  src="/images/dashboard.png"
+                  alt="Home illustration"
+                  className="w-full h-full object-contain"
+                  style={{ mixBlendMode: 'Luminosity' }}
+                  loading="eager"
+                />
               </div>
-              
-              <div className="my-6">
-                <div className="flex items-baseline">
-                  <p className="text-4xl font-extrabold text-indigo-600 dark:text-indigo-400">{stats.properties}</p>
-                  <p className="ml-2 text-gray-500 dark:text-gray-400">total</p>
-                  
-                  {stats.properties > 0 && (
-                    <span className="ml-4 bg-green-100 dark:bg-green-900 text-green-700 dark:text-green-300 text-xs px-2 py-1 rounded-full flex items-center">
-                      <svg className="w-3 h-3 mr-1" fill="none" stroke="currentColor" viewBox="0 0 24 24" xmlns="http://www.w3.org/2000/svg">
-                        <path strokeLinecap="round" strokeLinejoin="round" strokeWidth={2} d="M5 10l7-7m0 0l7 7m-7-7v18" />
-                      </svg>
-                      Active
-                    </span>
-                  )}
-                </div>
-              </div>
-              
-              <Link 
-                href="/properties" 
-                className="inline-flex items-center text-indigo-600 dark:text-indigo-400 hover:text-indigo-800 dark:hover:text-indigo-300 font-medium transition-colors"
-              >
-                View all properties
-                <svg className="w-5 h-5 ml-1" fill="none" stroke="currentColor" viewBox="0 0 24 24" xmlns="http://www.w3.org/2000/svg">
-                  <path strokeLinecap="round" strokeLinejoin="round" strokeWidth={2} d="M9 5l7 7-7 7" />
-                </svg>
-              </Link>
+
+              <p className="w-full max-w-[311px] font-bold text-[16px] leading-[22px] text-center text-[#515964]">
+                Add the place you're renting so we can help protect your deposit.
+              </p>
             </div>
-          </div>
-          
-          {/* Reports Card */}
-          <div className="bg-white dark:bg-gray-800 rounded-2xl shadow-lg p-6 transition-all duration-300 hover:shadow-xl border border-gray-100 dark:border-gray-700 relative overflow-hidden">
-            <div className="absolute top-0 right-0 w-24 h-24 bg-purple-100 dark:bg-purple-900/30 rounded-full -mt-8 -mr-8 opacity-70"></div>
-            
-            <div className="relative z-10">
-              <div className="flex items-center mb-4">
-                <div className="bg-purple-100 text-purple-600 dark:bg-purple-900 dark:text-purple-300 rounded-xl p-3 mr-4">
-                  <svg className="w-7 h-7" fill="none" stroke="currentColor" viewBox="0 0 24 24" xmlns="http://www.w3.org/2000/svg">
-                    <path strokeLinecap="round" strokeLinejoin="round" strokeWidth={2} d="M9 12h6m-6 4h6m2 5H7a2 2 0 01-2-2V5a2 2 0 012-2h5.586a1 1 0 01.707.293l5.414 5.414a1 1 0 01.293.707V19a2 2 0 01-2 2z" />
-                  </svg>
-                </div>
-                <div>
-                  <h2 className="text-xl font-bold text-gray-900 dark:text-white">Reports</h2>
-                  <p className="text-gray-500 dark:text-gray-400 text-sm">Document property conditions</p>
-                </div>
-              </div>
-              
-              <div className="my-6">
-                <div className="flex items-baseline">
-                  <p className="text-4xl font-extrabold text-purple-600 dark:text-purple-400">{stats.reports}</p>
-                  <p className="ml-2 text-gray-500 dark:text-gray-400">total</p>
-                  
-                  {stats.reports > 0 && (
-                    <span className="ml-4 bg-green-100 dark:bg-green-900 text-green-700 dark:text-green-300 text-xs px-2 py-1 rounded-full flex items-center">
-                      <svg className="w-3 h-3 mr-1" fill="none" stroke="currentColor" viewBox="0 0 24 24" xmlns="http://www.w3.org/2000/svg">
-                        <path strokeLinecap="round" strokeLinejoin="round" strokeWidth={2} d="M5 10l7-7m0 0l7 7m-7-7v18" />
-                      </svg>
-                      Created
-                    </span>
-                  )}
-                </div>
-              </div>
-              
-              <Link 
-                href="/reports" 
-                className="inline-flex items-center text-purple-600 dark:text-purple-400 hover:text-purple-800 dark:hover:text-purple-300 font-medium transition-colors"
-              >
-                View all reports
-                <svg className="w-5 h-5 ml-1" fill="none" stroke="currentColor" viewBox="0 0 24 24" xmlns="http://www.w3.org/2000/svg">
-                  <path strokeLinecap="round" strokeLinejoin="round" strokeWidth={2} d="M9 5l7 7-7 7" />
-                </svg>
-              </Link>
-            </div>
-          </div>
-        </div>
-        
-        {/* Recent Activity and Quick Actions - Modern Tasarım */}
-        <div className="grid grid-cols-1 lg:grid-cols-3 gap-8 mt-10">
-          {/* Recent Activity */}
-          <div className="lg:col-span-2">
-            <div className="bg-white dark:bg-gray-800 rounded-2xl shadow-lg p-6 border border-gray-100 dark:border-gray-700">
-              <h2 className="text-xl font-bold text-gray-900 dark:text-white flex items-center mb-6">
-                <svg className="w-5 h-5 mr-2 text-indigo-600 dark:text-indigo-400" fill="none" stroke="currentColor" viewBox="0 0 24 24" xmlns="http://www.w3.org/2000/svg">
-                  <path strokeLinecap="round" strokeLinejoin="round" strokeWidth={2} d="M12 8v4l3 3m6-3a9 9 0 11-18 0 9 9 0 0118 0z" />
-                </svg>
-                Recent Activity
+          ) : (
+            // Property list view
+            <div className="w-full">
+              <h2 className="font-bold text-[16px] leading-[22px] text-[#0B1420] mb-4">
+                Your Properties
               </h2>
-              
-              {recentActivity.length === 0 ? (
-                <div className="bg-gray-50 dark:bg-gray-700/50 rounded-xl p-6 text-center">
-                  <p className="text-gray-500 dark:text-gray-400">No recent activities yet</p>
-                </div>
-              ) : (
-                <div className="space-y-6">
-                  {recentActivity.map(activity => (
-                    <div key={activity.id} className="flex items-start p-4 bg-gray-50 dark:bg-gray-700/50 rounded-xl transition-all duration-200 hover:shadow-md">
-                      <ActivityIcon type={activity.icon} />
-                      <div className="ml-4 flex-1">
-                        <div className="flex justify-between">
-                          <p className="text-gray-900 dark:text-white font-medium">{activity.title}</p>
-                          <span className="text-gray-500 dark:text-gray-400 text-xs">{activity.time}</span>
-                        </div>
-                        <p className="text-gray-600 dark:text-gray-300 text-sm mt-1">{activity.description}</p>
+
+              <div className="flex flex-col gap-[10px] w-full mb-6">
+                {properties.map((property) => (
+                  <div
+                    key={property.id}
+                    className="w-full p-[16px] bg-white border border-[#D1E7D5] rounded-[16px] cursor-pointer relative active:bg-gray-50 transition-colors touch-manipulation"
+                    onClick={() => router.push(`/properties/details?propertyId=${property.id}`)}
+                  >
+                    {/* Delete Button - improved touch target */}
+                    <button
+                      className="absolute bottom-[8px] right-[8px] w-[32px] h-[32px] flex items-center justify-center z-10 opacity-80 hover:opacity-100 active:opacity-100 transition-opacity touch-manipulation"
+                      onClick={(e) => deleteProperty(e, property.id)}
+                      aria-label="Delete property"
+                    >
+                      <svg width="16" height="16" viewBox="0 0 16 16" fill="none" xmlns="http://www.w3.org/2000/svg">
+                        <path d="M14 3.98667C11.78 3.76667 9.54667 3.65333 7.32 3.65333C6 3.65333 4.68 3.72 3.36 3.85333L2 3.98667" stroke="#D14848" strokeWidth="1.5" strokeLinecap="round" strokeLinejoin="round"/>
+                        <path d="M5.66669 3.31999L5.81335 2.43999C5.92002 1.80666 6.00002 1.33333 7.12669 1.33333H8.87335C10 1.33333 10.0867 1.83999 10.1867 2.44666L10.3334 3.31999" stroke="#D14848" strokeWidth="1.5" strokeLinecap="round" strokeLinejoin="round"/>
+                        <path d="M12.5667 6.09333L12.1334 12.8067C12.06 13.8533 12 14.6667 10.14 14.6667H5.86002C4.00002 14.6667 3.94002 13.8533 3.86668 12.8067L3.43335 6.09333" stroke="#D14848" strokeWidth="1.5" strokeLinecap="round" strokeLinejoin="round"/>
+                        <path d="M6.88669 11H9.10669" stroke="#D14848" strokeWidth="1.5" strokeLinecap="round" strokeLinejoin="round"/>
+                        <path d="M6.33331 8.33333H9.66665" stroke="#D14848" strokeWidth="1.5" strokeLinecap="round" strokeLinejoin="round"/>
+                      </svg>
+                    </button>
+
+                    <div className="flex flex-row justify-between items-center pr-6">
+                      <div className="flex flex-col gap-1">
+                        <h3 className="font-bold text-[14px] leading-[19px] text-[#0B1420]">
+                          {property.address || 'Property'}
+                        </h3>
+                        <p className="font-normal text-[12px] leading-[16px] text-[#515964]">
+                          {property.description || property.property_type || 'No description'}
+                        </p>
                       </div>
+                      <svg width="16" height="16" viewBox="0 0 16 16" fill="none" xmlns="http://www.w3.org/2000/svg">
+                        <path d="M5.94001 13.2799L10.6 8.61989C11.14 8.07989 11.14 7.17989 10.6 6.63989L5.94001 1.97989"
+                          stroke="#1C2C40" strokeWidth="1.5" strokeMiterlimit="10" strokeLinecap="round" strokeLinejoin="round"/>
+                      </svg>
                     </div>
-                  ))}
-                </div>
-              )}
-              
-              <div className="mt-6 pt-4 border-t border-gray-200 dark:border-gray-700 text-right">
-                <Link href="/activity" className="inline-flex items-center text-indigo-600 dark:text-indigo-400 hover:text-indigo-800 dark:hover:text-indigo-300 font-medium transition-colors">
-                  View all activity
-                  <svg className="w-4 h-4 ml-1" fill="none" stroke="currentColor" viewBox="0 0 24 24" xmlns="http://www.w3.org/2000/svg">
-                    <path strokeLinecap="round" strokeLinejoin="round" strokeWidth={2} d="M9 5l7 7-7 7" />
-                  </svg>
-                </Link>
+                  </div>
+                ))}
               </div>
             </div>
-          </div>
+          )}
+        </div>
           
-          {/* Quick Actions */}
-          <div>
-            <div className="bg-white dark:bg-gray-800 rounded-2xl shadow-lg p-6 border border-gray-100 dark:border-gray-700">
-              <h2 className="text-xl font-bold text-gray-900 dark:text-white flex items-center mb-6">
-                <svg className="w-5 h-5 mr-2 text-indigo-600 dark:text-indigo-400" fill="none" stroke="currentColor" viewBox="0 0 24 24" xmlns="http://www.w3.org/2000/svg">
-                  <path strokeLinecap="round" strokeLinejoin="round" strokeWidth={2} d="M13 10V3L4 14h7v7l9-11h-7z" />
-                </svg>
-                Quick Actions
-              </h2>
-              
-              <div className="space-y-4">
-                <Link href="/properties/new" className="flex items-center p-4 bg-indigo-50 dark:bg-indigo-900/20 rounded-xl transition-all duration-200 hover:bg-indigo-100 dark:hover:bg-indigo-900/30 group">
-                  <div className="bg-indigo-100 dark:bg-indigo-900 text-indigo-600 dark:text-indigo-400 rounded-lg p-3 mr-4 group-hover:bg-indigo-200 dark:group-hover:bg-indigo-800 transition-colors">
-                    <svg className="w-6 h-6" fill="none" stroke="currentColor" viewBox="0 0 24 24" xmlns="http://www.w3.org/2000/svg">
-                      <path strokeLinecap="round" strokeLinejoin="round" strokeWidth={2} d="M12 6v6m0 0v6m0-6h6m-6 0H6" />
-                    </svg>
-                  </div>
-                  <div>
-                    <span className="text-gray-900 dark:text-white font-medium block">Add New Property</span>
-                    <span className="text-gray-500 dark:text-gray-400 text-sm">Register a new real estate</span>
-                  </div>
-                </Link>
-                
-                <Link href="/reports/new" className="flex items-center p-4 bg-purple-50 dark:bg-purple-900/20 rounded-xl transition-all duration-200 hover:bg-purple-100 dark:hover:bg-purple-900/30 group">
-                  <div className="bg-purple-100 dark:bg-purple-900 text-purple-600 dark:text-purple-400 rounded-lg p-3 mr-4 group-hover:bg-purple-200 dark:group-hover:bg-purple-800 transition-colors">
-                    <svg className="w-6 h-6" fill="none" stroke="currentColor" viewBox="0 0 24 24" xmlns="http://www.w3.org/2000/svg">
-                      <path strokeLinecap="round" strokeLinejoin="round" strokeWidth={2} d="M9 13h6m-3-3v6m5 5H7a2 2 0 01-2-2V5a2 2 0 012-2h5.586a1 1 0 01.707.293l5.414 5.414a1 1 0 01.293.707V19a2 2 0 01-2 2z" />
-                    </svg>
-                  </div>
-                  <div>
-                    <span className="text-gray-900 dark:text-white font-medium block">Create New Report</span>
-                    <span className="text-gray-500 dark:text-gray-400 text-sm">Document property condition</span>
-                  </div>
-                </Link>
-                
-                <Link href="/reports/shared" className="flex items-center p-4 bg-green-50 dark:bg-green-900/20 rounded-xl transition-all duration-200 hover:bg-green-100 dark:hover:bg-green-900/30 group">
-                  <div className="bg-green-100 dark:bg-green-900 text-green-600 dark:text-green-400 rounded-lg p-3 mr-4 group-hover:bg-green-200 dark:group-hover:bg-green-800 transition-colors">
-                    <svg className="w-6 h-6" fill="none" stroke="currentColor" viewBox="0 0 24 24" xmlns="http://www.w3.org/2000/svg">
-                      <path strokeLinecap="round" strokeLinejoin="round" strokeWidth={2} d="M8.684 13.342C8.886 12.938 9 12.482 9 12c0-.482-.114-.938-.316-1.342m0 2.684a3 3 0 110-2.684m0 2.684l6.632 3.316m-6.632-6l6.632-3.316m0 0a3 3 0 105.367-2.684 3 3 0 00-5.367 2.684zm0 9.316a3 3 0 105.368 2.684 3 3 0 00-5.368-2.684z" />
-                    </svg>
-                  </div>
-                  <div>
-                    <span className="text-gray-900 dark:text-white font-medium block">Share Reports</span>
-                    <span className="text-gray-500 dark:text-gray-400 text-sm">Share with tenants or landlords</span>
-                  </div>
-                </Link>
-              </div>
-            </div>
-          </div>
+        {/* Add Property Button - Moved to bottom */}
+        <div className="w-full px-4 fixed bottom-0 left-0 right-0 flex justify-center pb-6 pt-4 bg-gradient-to-t from-[#FBF5DA] to-transparent max-w-[390px] mx-auto safe-area-bottom">
+          <button
+            onClick={() => router.push('/properties/addunit')}
+            className="w-full h-[56px] flex flex-row justify-center items-center py-[18px] bg-[#1C2C40] rounded-[16px] active:bg-[#283c56] transition-colors touch-manipulation"
+          >
+            <span className="font-bold text-[16px] leading-[22px] text-[#D1E7E2]">
+              {properties.length > 0 ? 'Add Another Home' : 'Add New Home'}
+            </span>
+          </button>
         </div>
       </div>
-    </Layout>
+    </div>
   );
 }

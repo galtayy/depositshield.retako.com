@@ -5,8 +5,8 @@ const DEVELOPMENT_API_URL = 'http://localhost:5050';
 const PRODUCTION_API_URL = 'https://api.depositshield.retako.com';
 
 // Çalışma ortamına göre URL belirle
-const isProduction = typeof window !== 'undefined' 
-  ? window.location.hostname !== 'localhost' 
+const isProduction = typeof window !== 'undefined'
+  ? window.location.hostname !== 'localhost'
   : process.env.NODE_ENV === 'production';
 
 const API_URL = isProduction ? PRODUCTION_API_URL : DEVELOPMENT_API_URL;
@@ -171,13 +171,146 @@ publicTokenApi.interceptors.response.use(
 
 // API fonksiyonları
 export const apiService = {
+  // API Base URL getter - Fotoğraf URL'leri oluşturmak için kullanılır
+  getBaseUrl: () => API_URL,
+
   // Mülk işlemleri
   properties: {
     getAll: () => api.get('/api/properties'),
     getById: (id) => api.get(`/api/properties/${id}`),
     create: (data) => api.post('/api/properties', data),
-    update: (id, data) => api.put(`/api/properties/${id}`, data),
+    update: (id, data) => {
+      // Log data being sent for debugging
+      console.log('Updating property data:', data);
+      
+      // Check if this is a basic property update (only address, description, unit_number)
+      if (data._basic_property_update) {
+        // Pass through the flag directly to the backend - no need to filter fields
+        console.log('BASIC PROPERTY UPDATE DETECTED - using special backend handling');
+        console.log('Flag value:', data._basic_property_update);
+        console.log('Flag type:', typeof data._basic_property_update);
+        
+        // Create a minimal payload with ONLY the essential fields and the flag
+        // Flag'i JSON.stringify/parse ile saf boolean değere dönüştür
+        const basicUpdatePayload = {
+          address: data.address,
+          description: data.description,
+          unit_number: data.unit_number,
+          // Validasyon hatası olmasın diye role_at_this_property alanını ekle
+          role_at_this_property: data.role_at_this_property || 'renter',
+          _basic_property_update: JSON.parse(JSON.stringify(true))  // Kesinlikle boolean true olarak gönder
+        };
+        
+        console.log('SENDING BASIC UPDATE PAYLOAD:', basicUpdatePayload);
+        console.log('Flag type after JSON processing:', typeof basicUpdatePayload._basic_property_update);
+        
+        // The backend will handle this flag and only update the basic fields
+        return api.put(`/api/properties/${id}`, basicUpdatePayload);
+      }
+      
+      // Legacy support for partial update with specific fields
+      if (data._partial_update) {
+        // This is a partial update - only send the specified fields
+        console.log('PARTIAL UPDATE DETECTED - Only sending specified fields');
+        
+        const partialData = {};
+        const fieldsToUpdate = data._partial_fields || [];
+        
+        // Only include specified fields
+        fieldsToUpdate.forEach(field => {
+          if (data[field] !== undefined) {
+            partialData[field] = data[field];
+          }
+        });
+        
+        console.log('Partial update payload:', partialData);
+        return api.put(`/api/properties/${id}`, partialData);
+      }
+      
+      // Regular full update - proceed with date formatting
+      const formattedData = { ...data };
+      
+      // Helper to ensure dates are in YYYY-MM-DD format
+      const formatDate = (dateStr) => {
+        if (!dateStr) return null;
+        try {
+          // If already in YYYY-MM-DD format, return as is
+          if (/^\d{4}-\d{2}-\d{2}$/.test(dateStr)) return dateStr;
+          
+          // Otherwise parse and format the date
+          const date = new Date(dateStr);
+          if (isNaN(date.getTime())) return null;
+          
+          const year = date.getFullYear();
+          const month = String(date.getMonth() + 1).padStart(2, '0');
+          const day = String(date.getDate()).padStart(2, '0');
+          return `${year}-${month}-${day}`;
+        } catch (e) {
+          console.error('Error formatting date:', e);
+          return null;
+        }
+      };
+      
+      // Format all date fields
+      if (formattedData.contract_start_date) {
+        formattedData.contract_start_date = formatDate(formattedData.contract_start_date);
+      }
+      if (formattedData.contract_end_date) {
+        formattedData.contract_end_date = formatDate(formattedData.contract_end_date);
+      }
+      if (formattedData.move_in_date) {
+        formattedData.move_in_date = formatDate(formattedData.move_in_date);
+      }
+      
+      console.log('Sending formatted data to API:', formattedData);
+      return api.put(`/api/properties/${id}`, formattedData);
+    },
     delete: (id) => api.delete(`/api/properties/${id}`),
+    saveLandlordDetails: (id, data) => {
+      console.log('*** LANDLORD VERISI KAYIT EDILIYOR ***');
+      console.log('ID:', id, 'Data:', data);
+      
+      // Burada iki format desteği ekleyelim:
+      // 1. Frontend formatı: landlord_email, landlord_phone
+      // 2. Backend formatı: email, phone
+      
+      let email = null;
+      let phone = null;
+      
+      // Hangi formatta veri geldi?
+      if (data.email !== undefined) {
+        // Backend formatı
+        email = data.email;
+        phone = data.phone;
+      } else if (data.landlord_email !== undefined) {
+        // Frontend formatı
+        email = data.landlord_email;
+        phone = data.landlord_phone;
+      }
+      
+      console.log('Veri çıkarıldı:', { email, phone });
+      
+      // En az bir alan dolu olmalı
+      if ((!email || email.trim() === '') && (!phone || phone.trim() === '')) {
+        console.error('Hata: Email ve telefon alanlarının ikisi de boş');
+        return Promise.reject(new Error('Lütfen en az bir iletişim bilgisi girin'));
+      }
+      
+      // Direkt backend formatında gönder
+      return api.post(`/api/properties/${id}/landlord`, {
+        email: email ? email.trim() : null,
+        phone: phone ? phone.trim() : null
+      });
+    },
+    saveRooms: (id, rooms) => {
+      console.log('API call - saveRooms with data:', { rooms });
+      return api.post(`/api/properties/${id}/rooms`, { rooms });
+    },
+    getRooms: (id) => {
+      console.log('API call - getRooms for property:', id);
+      return api.get(`/api/properties/${id}/rooms`);
+    },
+    deleteRoom: (id, roomId) => api.delete(`/api/properties/${id}/rooms/${roomId}`),
   },
   
   // Rapor işlemleri
@@ -391,8 +524,26 @@ export const apiService = {
         });
       });
     },
+    // Yeni eklenen metotlar - Oda fotoğrafları için
+    getByRoom: (propertyId, roomId) => {
+      console.log(`Getting photos for room ${roomId} in property ${propertyId}`);
+      return api.get(`/api/photos/room/${propertyId}/${roomId}`);
+    },
+    getByProperty: (propertyId) => {
+      console.log(`Getting all photos for property ${propertyId}`);
+      return api.get(`/api/photos/property/${propertyId}`);
+    },
+    // Rapor için fotoğraf yükleme
     upload: (reportId, formData) => {
       return api.post(`/api/photos/upload/${reportId}`, formData, {
+        headers: {
+          'Content-Type': 'multipart/form-data',
+        },
+      });
+    },
+    // Oda için fotoğraf yükleme
+    uploadForRoom: (propertyId, roomId, formData) => {
+      return api.post(`/api/photos/upload-room/${propertyId}/${roomId}`, formData, {
         headers: {
           'Content-Type': 'multipart/form-data',
         },
@@ -415,8 +566,14 @@ export const apiService = {
   auth: {
     login: (credentials) => api.post('/api/auth/login', credentials),
     register: (userData) => api.post('/api/auth/register', userData),
+    verifyEmail: (verificationData) => api.post('/api/auth/verify-email', verificationData),
+    resendVerificationCode: (data) => publicApi.post('/api/auth/resend-verification-code', data),
     getUser: () => api.get('/api/auth/user'),
     checkToken: () => api.get('/api/auth/token-check'),
+    checkEmail: (data) => publicApi.post('/api/auth/check-email', data),
+    requestPasswordReset: (data) => publicApi.post('/api/auth/request-password-reset', data),
+    verifyResetCode: (data) => publicApi.post('/api/auth/verify-reset-code', data),
+    resetPassword: (data) => publicApi.post('/api/auth/reset-password', data),
   }
 };
 

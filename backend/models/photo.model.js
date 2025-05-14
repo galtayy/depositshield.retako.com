@@ -4,6 +4,8 @@ class Photo {
   constructor(photo) {
     this.id = photo.id;
     this.report_id = photo.report_id;
+    this.room_id = photo.room_id;
+    this.property_id = photo.property_id;
     this.file_path = photo.file_path;
     this.note = photo.note;
     this.timestamp = photo.timestamp;
@@ -14,13 +16,15 @@ class Photo {
   static async create(newPhoto) {
     try {
       const query = `
-        INSERT INTO photos 
-        (report_id, file_path, note, timestamp) 
-        VALUES (?, ?, ?, ?)
+        INSERT INTO photos
+        (report_id, room_id, property_id, file_path, note, timestamp)
+        VALUES (?, ?, ?, ?, ?, ?)
       `;
 
       const [result] = await db.execute(query, [
-        newPhoto.report_id,
+        newPhoto.report_id || null,
+        newPhoto.room_id || null,
+        newPhoto.property_id || null,
         newPhoto.file_path,
         newPhoto.note || null,
         newPhoto.timestamp || new Date()
@@ -45,16 +49,68 @@ class Photo {
   static async findByReportId(reportId) {
     try {
       const query = `
-        SELECT p.*, GROUP_CONCAT(t.tag) as tags 
+        SELECT p.*, GROUP_CONCAT(t.tag) as tags
         FROM photos p
         LEFT JOIN photo_tags t ON p.id = t.photo_id
         WHERE p.report_id = ?
         GROUP BY p.id
         ORDER BY p.timestamp ASC
       `;
-      
+
       const [rows] = await db.execute(query, [reportId]);
-      
+
+      // Etiketleri diziye dönüştür
+      return rows.map(row => {
+        return {
+          ...row,
+          tags: row.tags ? row.tags.split(',') : []
+        };
+      });
+    } catch (error) {
+      throw error;
+    }
+  }
+
+  // Odaya ait tüm fotoğrafları getirme
+  static async findByRoomId(roomId, propertyId) {
+    try {
+      const query = `
+        SELECT p.*, GROUP_CONCAT(t.tag) as tags
+        FROM photos p
+        LEFT JOIN photo_tags t ON p.id = t.photo_id
+        WHERE p.room_id = ? AND p.property_id = ?
+        GROUP BY p.id
+        ORDER BY p.timestamp ASC
+      `;
+
+      const [rows] = await db.execute(query, [roomId, propertyId]);
+
+      // Etiketleri diziye dönüştür
+      return rows.map(row => {
+        return {
+          ...row,
+          tags: row.tags ? row.tags.split(',') : []
+        };
+      });
+    } catch (error) {
+      throw error;
+    }
+  }
+
+  // Mülke ait tüm fotoğrafları getirme (odalarla birlikte)
+  static async findByPropertyId(propertyId) {
+    try {
+      const query = `
+        SELECT p.*, GROUP_CONCAT(t.tag) as tags
+        FROM photos p
+        LEFT JOIN photo_tags t ON p.id = t.photo_id
+        WHERE p.property_id = ?
+        GROUP BY p.id
+        ORDER BY p.room_id, p.timestamp ASC
+      `;
+
+      const [rows] = await db.execute(query, [propertyId]);
+
       // Etiketleri diziye dönüştür
       return rows.map(row => {
         return {

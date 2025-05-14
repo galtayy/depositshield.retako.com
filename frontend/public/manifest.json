@@ -1,11 +1,31 @@
 {
   "name": "DepositShield",
   "short_name": "DepositShield",
-  "description": "Mülk raporlama ve belgeleme uygulaması",
+  "description": "Property inspection and documentation app",
   "start_url": "/",
   "display": "standalone",
-  "background_color": "#F6F6F6",
-  "theme_color": "#F4B860",
+  "background_color": "#FBF5DA",
+  "theme_color": "#1C2C40",
+  "orientation": "portrait",
+  "scope": "/",
+  "lang": "en-US",
+  "categories": ["utilities", "productivity", "lifestyle"],
+  "screenshots": [
+    {
+      "src": "/images/dashboard.png",
+      "type": "image/png",
+      "sizes": "540x720"
+    }
+  ],
+  "shortcuts": [
+    {
+      "name": "Add Home",
+      "short_name": "Add",
+      "description": "Add a new property",
+      "url": "/properties/addunit",
+      "icons": [{ "src": "/icons/icon-192x192.png", "sizes": "192x192" }]
+    }
+  ],
   "icons": [
     {
       "src": "/icons/icon-192x192.png",

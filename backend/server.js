@@ -36,6 +36,12 @@ const corsOptions = {
       'https://api.depositshield.retako.com' // Canlı backend
     ];
     
+    // Geliştirme modunda tüm isteklere izin ver
+    if (process.env.NODE_ENV === 'development') {
+      console.log('Development mode: CORS allowed for all origins');
+      return callback(null, true);
+    }
+    
     // Origin olmayan istekler (postman, curl gibi olanlar için)
     if (!origin) return callback(null, true);
     
@@ -47,7 +53,8 @@ const corsOptions = {
     }
   },
   methods: ['GET', 'POST', 'PUT', 'DELETE', 'OPTIONS'],
-  allowedHeaders: ['Content-Type', 'Authorization', 'X-Requested-With'],
+  allowedHeaders: ['Content-Type', 'Authorization', 'X-Requested-With', 'X-Public-Access', 'X-Optional-Auth'],
+  exposedHeaders: ['Content-Length', 'Content-Type'],
   credentials: true,
   maxAge: 86400 // 24 saat
 };
@@ -56,6 +63,27 @@ const corsOptions = {
 app.use(cors(corsOptions));
 app.use(express.json());
 app.use(express.urlencoded({ extended: true }));
+
+// Debug middleware - sadece geliştirme ortamında
+if (process.env.NODE_ENV === 'development') {
+  app.use((req, res, next) => {
+    console.log(`${new Date().toISOString()} - ${req.method} ${req.originalUrl}`);
+    
+    if (req.method === 'POST' || req.method === 'PUT') {
+      console.log('Request body:', JSON.stringify(req.body, null, 2));
+    }
+    
+    // Response logger
+    const oldSend = res.send;
+    res.send = function(data) {
+      console.log(`Response: ${res.statusCode}`, 
+        typeof data === 'object' ? `(${JSON.stringify(data).substring(0, 100)}...)` : `(${data}...)`);
+      return oldSend.apply(res, arguments);
+    };
+    
+    next();
+  });
+}
 
 // Statik dosyalar için uploads klasörünü tanımla
 // Özellikle CORS ve cache için özel ayarlar ekleyelim
